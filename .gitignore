@@ -1,0 +1,37 @@
+# Project rules: design docs, specs, plans stay local
+docs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Env vars / secrets
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Caches / artifacts
+.cache/
+*.log
+rollouts/
+checkpoints/
+wandb/

@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
+from anthropic import AsyncAnthropic
+from google import genai
 from openai import AsyncOpenAI
 
-Provider = Literal["openai"]
+Provider = Literal["openai", "anthropic", "google"]
 
 
 @dataclass
@@ -35,6 +37,43 @@ class _OpenAIBackend:
         return resp.choices[0].message.content or ""
 
 
+class _AnthropicBackend:
+    def __init__(self) -> None:
+        self._client: AsyncAnthropic | None = None
+
+    def _get_client(self) -> AsyncAnthropic:
+        if self._client is None:
+            self._client = AsyncAnthropic()
+        return self._client
+
+    async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
+        system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        non_system = [m for m in messages if m["role"] != "system"]
+        kwargs.setdefault("max_tokens", 2048)
+        resp = await self._get_client().messages.create(
+            model=model,
+            messages=non_system,
+            system=system or "",
+            **kwargs,
+        )
+        return "".join(block.text for block in resp.content if block.type == "text")
+
+
+class _GoogleBackend:
+    def __init__(self) -> None:
+        self._client: genai.Client | None = None
+
+    def _get_client(self) -> genai.Client:
+        if self._client is None:
+            self._client = genai.Client()
+        return self._client
+
+    async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
+        prompt = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+        resp = await self._get_client().aio.models.generate_content(model=model, contents=prompt)
+        return resp.text or ""
+
+
 class LLMClient:
     def __init__(self, provider: Provider, *, _override_client: _ChatBackend | None = None):
         if _override_client is not None:
@@ -42,6 +81,10 @@ class LLMClient:
             return
         if provider == "openai":
             self._backend = _OpenAIBackend()
+        elif provider == "anthropic":
+            self._backend = _AnthropicBackend()
+        elif provider == "google":
+            self._backend = _GoogleBackend()
         else:
             raise ValueError(f"unknown provider: {provider}")
 

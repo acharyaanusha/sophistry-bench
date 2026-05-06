@@ -3,7 +3,7 @@ from typing import Literal, Protocol
 
 from openai import AsyncOpenAI
 
-Provider = Literal["openai", "anthropic", "google"]
+Provider = Literal["openai"]
 
 
 @dataclass
@@ -21,10 +21,15 @@ class _ChatBackend(Protocol):
 
 class _OpenAIBackend:
     def __init__(self) -> None:
-        self._client = AsyncOpenAI()
+        self._client: AsyncOpenAI | None = None
 
-    async def chat_completion(self, *, messages, model, **kwargs) -> str:
-        resp = await self._client.chat.completions.create(
+    def _get_client(self) -> AsyncOpenAI:
+        if self._client is None:
+            self._client = AsyncOpenAI()
+        return self._client
+
+    async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
+        resp = await self._get_client().chat.completions.create(
             model=model, messages=messages, **kwargs
         )
         return resp.choices[0].message.content or ""
@@ -32,8 +37,11 @@ class _OpenAIBackend:
 
 class LLMClient:
     def __init__(self, provider: Provider, *, _override_client: _ChatBackend | None = None):
+        if _override_client is not None:
+            self._backend: _ChatBackend = _override_client
+            return
         if provider == "openai":
-            self._backend: _ChatBackend = _override_client or _OpenAIBackend()
+            self._backend = _OpenAIBackend()
         else:
             raise ValueError(f"unknown provider: {provider}")
 

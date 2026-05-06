@@ -15,4 +15,4 @@ async def test_openai_client_returns_completion():
 @pytest.mark.asyncio
 async def test_unknown_provider_raises():
     with pytest.raises(ValueError, match="unknown provider"):
-        LLMClient(provider="not-a-provider")
+        LLMClient(provider="not-a-provider")  # type: ignore[arg-type]

@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, Omit
 from google import genai
+from google.genai.types import GenerateContentConfig
 from openai import AsyncOpenAI
 
 Provider = Literal["openai", "anthropic", "google"]
@@ -47,13 +48,14 @@ class _AnthropicBackend:
         return self._client
 
     async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
-        system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        system_messages = [m["content"] for m in messages if m["role"] == "system"]
         non_system = [m for m in messages if m["role"] != "system"]
+        system: str | Omit = "\n".join(system_messages) if system_messages else Omit()
         kwargs.setdefault("max_tokens", 2048)
         resp = await self._get_client().messages.create(
             model=model,
             messages=non_system,
-            system=system or "",
+            system=system,
             **kwargs,
         )
         return "".join(block.text for block in resp.content if block.type == "text")
@@ -70,7 +72,10 @@ class _GoogleBackend:
 
     async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
         prompt = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
-        resp = await self._get_client().aio.models.generate_content(model=model, contents=prompt)
+        config = GenerateContentConfig(**kwargs) if kwargs else None
+        resp = await self._get_client().aio.models.generate_content(
+            model=model, contents=prompt, config=config
+        )
         return resp.text or ""
 
 

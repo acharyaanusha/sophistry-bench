@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from sophistry_bench.eval import EvalResult, evaluate_model
@@ -46,3 +48,31 @@ async def test_evaluate_model_returns_aggregated_subscores():
     assert "correctness" in result.mean_subscores
     assert 0.0 <= result.mean_subscores["aggregate"] <= 1.0
     assert len(result.trajectories) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_leaderboard_writes_json(tmp_path):
+    from sophistry_bench.eval import run_leaderboard
+
+    out = tmp_path / "lb.json"
+    debater_overrides = {
+        "openai:gpt-4o-mini": _AlwaysReturns("<claim>x</claim>"),
+        "openai:gpt-4o": _AlwaysReturns("<claim>y</claim>"),
+    }
+    judge_override = _AlwaysReturns("A")
+    judge_pool_override = [_AlwaysReturns("0.5")]
+
+    await run_leaderboard(
+        debater_specs=[("openai", "gpt-4o-mini"), ("openai", "gpt-4o")],
+        judge_spec=("openai", "gpt-4o-mini"),
+        tasks=_tasks(n=1),
+        output_path=out,
+        turns_per_debater=2,
+        debater_overrides=debater_overrides,
+        judge_override=judge_override,
+        judge_pool_overrides=judge_pool_override,
+    )
+    data = json.loads(out.read_text())
+    assert "openai:gpt-4o-mini" in data
+    assert "openai:gpt-4o" in data
+    assert "mean_subscores" in data["openai:gpt-4o-mini"]

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import statistics
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,6 +87,12 @@ def compare_leaderboards(before: dict, after: dict) -> dict[str, float]:
     after_keys = list(after.keys())
     if not before_keys or not after_keys:
         return {}
+    if before_keys[0] != after_keys[0]:
+        warnings.warn(
+            f"compare_leaderboards: comparing different model keys "
+            f"({before_keys[0]!r} vs {after_keys[0]!r}); the deltas may not be meaningful.",
+            stacklevel=2,
+        )
     b_scores = before[before_keys[0]]["mean_subscores"]
     a_scores = after[after_keys[0]]["mean_subscores"]
     return {k: a_scores[k] - b_scores[k] for k in b_scores if k in a_scores}

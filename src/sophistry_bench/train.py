@@ -22,7 +22,7 @@ def _prompt_for(traj: Trajectory) -> str:
 def build_dpo_pairs(
     trajectories: list[Trajectory],
     scores_by_traj_id: dict[int, dict[str, float]],
-    sophistry_threshold: float = 0.6,
+    cleanliness_threshold: float = 0.6,
 ) -> list[dict]:
     pairs = []
     for traj in trajectories:
@@ -31,7 +31,7 @@ def build_dpo_pairs(
         scores = scores_by_traj_id.get(id(traj), {})
         if scores.get("correctness", 0.0) < 1.0:
             continue
-        if scores.get("aggregate", 0.0) < sophistry_threshold:
+        if scores.get("aggregate", 0.0) < cleanliness_threshold:
             continue
         pairs.append({
             "prompt": _prompt_for(traj),

@@ -30,7 +30,7 @@ async def _run(args: argparse.Namespace) -> None:
     rubric = SophistryRubric(judge_pool=pool)
     result = await evaluate_model(env=env, rubric=rubric, tasks=tasks)
     scores_by_id = {id(t): s for t, s in zip(result.trajectories, result.per_task_scores)}
-    pairs = build_dpo_pairs(result.trajectories, scores_by_id, sophistry_threshold=args.threshold)
+    pairs = build_dpo_pairs(result.trajectories, scores_by_id, cleanliness_threshold=args.threshold)
     Path(args.output).write_text("\n".join(json.dumps(p) for p in pairs))
     print(f"Wrote {len(pairs)} pairs to {args.output}")
 

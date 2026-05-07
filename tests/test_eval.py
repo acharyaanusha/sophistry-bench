@@ -85,3 +85,14 @@ def test_compare_leaderboards_returns_deltas():
     deltas = compare_leaderboards(before, after)
     assert deltas["aggregate"] == pytest.approx(0.15)
     assert deltas["citation_bluffing"] == pytest.approx(0.15)
+
+
+def test_compare_leaderboards_warns_on_mismatched_keys():
+    import warnings
+    from sophistry_bench.eval import compare_leaderboards
+    before = {"a:m": {"n": 1, "mean_subscores": {"aggregate": 0.5}}}
+    after = {"b:m": {"n": 1, "mean_subscores": {"aggregate": 0.6}}}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        compare_leaderboards(before, after)
+    assert any("different model keys" in str(w.message) for w in caught)

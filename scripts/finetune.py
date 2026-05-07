@@ -1,21 +1,40 @@
 import argparse
 import asyncio
+import json
+import tempfile
 from pathlib import Path
 
 from openai import AsyncOpenAI
 
 
+def _to_openai_dpo_format(trl_pair: dict) -> dict:
+    return {
+        "input": {"messages": [{"role": "user", "content": trl_pair["prompt"]}]},
+        "preferred_output": [{"role": "assistant", "content": trl_pair["chosen"]}],
+        "non_preferred_output": [{"role": "assistant", "content": trl_pair["rejected"]}],
+    }
+
+
 async def _openai_dpo(pairs_jsonl: Path, model: str, suffix: str) -> str:
     client = AsyncOpenAI()
-    with pairs_jsonl.open("rb") as f:
-        upload = await client.files.create(file=f, purpose="fine-tune")
-    job = await client.fine_tuning.jobs.create(
-        training_file=upload.id,
-        model=model,
-        method={"type": "dpo"},
-        suffix=suffix,
-    )
-    return job.id
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as tmp:
+        for line in pairs_jsonl.read_text().splitlines():
+            if not line.strip():
+                continue
+            tmp.write(json.dumps(_to_openai_dpo_format(json.loads(line))) + "\n")
+        converted_path = Path(tmp.name)
+    try:
+        with converted_path.open("rb") as f:
+            upload = await client.files.create(file=f, purpose="fine-tune")
+        job = await client.fine_tuning.jobs.create(
+            training_file=upload.id,
+            model=model,
+            method={"type": "dpo"},
+            suffix=suffix,
+        )
+        return job.id
+    finally:
+        converted_path.unlink(missing_ok=True)
 
 
 def main() -> None:

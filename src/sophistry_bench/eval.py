@@ -79,3 +79,13 @@ async def run_leaderboard(
         }
     Path(output_path).write_text(json.dumps(out, indent=2))
     return out
+
+
+def compare_leaderboards(before: dict, after: dict) -> dict[str, float]:
+    before_keys = list(before.keys())
+    after_keys = list(after.keys())
+    if not before_keys or not after_keys:
+        return {}
+    b_scores = before[before_keys[0]]["mean_subscores"]
+    a_scores = after[after_keys[0]]["mean_subscores"]
+    return {k: a_scores[k] - b_scores[k] for k in b_scores if k in a_scores}

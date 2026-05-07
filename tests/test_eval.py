@@ -76,3 +76,12 @@ async def test_run_leaderboard_writes_json(tmp_path):
     assert "openai:gpt-4o-mini" in data
     assert "openai:gpt-4o" in data
     assert "mean_subscores" in data["openai:gpt-4o-mini"]
+
+
+def test_compare_leaderboards_returns_deltas():
+    from sophistry_bench.eval import compare_leaderboards
+    before = {"openai:gpt-4o-mini": {"n": 10, "mean_subscores": {"aggregate": 0.5, "correctness": 0.6, "citation_bluffing": 0.7}}}
+    after = {"openai:gpt-4o-mini-ft": {"n": 10, "mean_subscores": {"aggregate": 0.65, "correctness": 0.7, "citation_bluffing": 0.85}}}
+    deltas = compare_leaderboards(before, after)
+    assert deltas["aggregate"] == pytest.approx(0.15)
+    assert deltas["citation_bluffing"] == pytest.approx(0.15)

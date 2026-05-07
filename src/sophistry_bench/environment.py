@@ -117,3 +117,19 @@ class DebateEnv:
         upper = raw.strip().upper()
         winner = "A" if upper.startswith("A") or "A" in upper.split() else "B"
         return JudgeRuling(winner=winner, reasoning=raw)
+
+
+def load_environment(config: dict | None = None) -> DebateEnv:
+    config = config or {}
+    a_cfg = config.get("debater_a", {"provider": "openai", "model": "gpt-4o-mini"})
+    b_cfg = config.get("debater_b", {"provider": "openai", "model": "gpt-4o-mini"})
+    j_cfg = config.get("judge", {"provider": "openai", "model": "gpt-4o-mini"})
+    return DebateEnv(
+        debater_a_client=LLMClient(provider=a_cfg["provider"]),
+        debater_a_model=a_cfg["model"],
+        debater_b_client=LLMClient(provider=b_cfg["provider"]),
+        debater_b_model=b_cfg["model"],
+        judge_client=LLMClient(provider=j_cfg["provider"]),
+        judge_model=j_cfg["model"],
+        turns_per_debater=config.get("turns_per_debater", 3),
+    )

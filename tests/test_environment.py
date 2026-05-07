@@ -57,3 +57,15 @@ async def test_rollout_alternates_debaters():
     )
     traj = await env.rollout(_task())
     assert [t.debater for t in traj.turns] == ["A","B","A","B","A","B"]
+
+
+def test_load_environment_returns_callable_env():
+    from sophistry_bench.environment import load_environment
+    env = load_environment(config={
+        "debater_a": {"provider": "openai", "model": "gpt-4o-mini"},
+        "debater_b": {"provider": "openai", "model": "gpt-4o-mini"},
+        "judge": {"provider": "openai", "model": "gpt-4o-mini"},
+        "turns_per_debater": 2,
+    })
+    assert hasattr(env, "rollout")
+    assert callable(env.rollout)

@@ -1,0 +1,9 @@
+[
+  {
+    "article_id": "abc123",
+    "article": "The expedition reached the summit on Tuesday morning. They carried 40kg of gear.",
+    "question": "When did the expedition reach the summit?",
+    "options": ["Monday morning", "Tuesday morning", "Tuesday evening", "Wednesday morning"],
+    "gold_label": 1
+  }
+]

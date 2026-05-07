@@ -1,0 +1,22 @@
+[meta]
+id = "sophistry-bench"
+title = "Sophistry Bench"
+description = "Multi-turn debate environment that scores LLM debaters on six axes of sophistry: correctness, citation bluffing, sycophantic concession, false confidence, gish gallop, and goalpost shifting. Built on QuALITY long-form QA passages."
+authors = ["Sophistry Bench contributors"]
+license = "MIT"
+tags = ["debate", "multi-agent", "rubric", "evaluation", "verifiers", "QuALITY"]
+
+[entrypoint]
+module = "sophistry_bench.environment"
+function = "load_environment"
+
+[eval]
+default_model = "openai:gpt-4o-mini"
+default_judge = "openai:gpt-4o-mini"
+default_n_tasks = 50
+turns_per_debater = 3
+
+[training]
+recipe = "dpo"
+default_pair_count = 500
+sophistry_threshold = 0.6

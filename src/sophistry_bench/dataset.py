@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ValidationInfo, field_validator
 
 
 class QualityItem(BaseModel):
@@ -13,7 +13,7 @@ class QualityItem(BaseModel):
 
     @field_validator("gold_index")
     @classmethod
-    def gold_in_range(cls, v: int, info) -> int:
+    def gold_in_range(cls, v: int, info: ValidationInfo) -> int:
         options = info.data.get("options") or []
         if not (0 <= v < len(options)):
             raise ValueError(f"gold_index {v} out of range for {len(options)} options")

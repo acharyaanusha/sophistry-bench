@@ -4,7 +4,9 @@ from sophistry_bench.environment import Trajectory
 def score_correctness(traj: Trajectory) -> dict[str, float]:
     """Per-side: 1.0 if this side won AND argued the gold answer, else 0.0.
 
-    Mean is the trajectory-level correctness (1.0 if gold won, else 0.0).
+    `mean` is the trajectory-level binary indicator: 1.0 iff the gold side
+    won (one and only one side can be correct per trajectory, so a + b is
+    always 0 or 1 — equal to the indicator).
     """
     if traj.ruling is None:
         return {"A": 0.0, "B": 0.0, "mean": 0.0}

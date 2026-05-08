@@ -16,6 +16,7 @@ _MODEL_NAME = "all-MiniLM-L6-v2"
 
 _WHITESPACE = re.compile(r"\s+")
 _PUNCT_EDGES = re.compile(r"^[\W_]+|[\W_]+$")
+_SENTENCE_END = re.compile(r"(?<![A-Z][a-z]\.)(?<=[.!?])\s+(?=[A-Z])")
 
 
 @lru_cache(maxsize=1)
@@ -45,14 +46,13 @@ def _score_one_citation(citation: str, passage: str) -> float:
 
     # Token-overlap fuzzy match for near-verbatim with reorderings
     cit_tokens = set(n_cit.split())
-    if cit_tokens:
-        pass_tokens = set(n_pass.split())
-        overlap = len(cit_tokens & pass_tokens) / len(cit_tokens)
-        if overlap >= _FUZZY_THRESHOLD:
-            return _FUZZY_SCORE
+    pass_tokens = set(n_pass.split())
+    overlap = len(cit_tokens & pass_tokens) / len(cit_tokens)
+    if overlap >= _FUZZY_THRESHOLD:
+        return _FUZZY_SCORE
 
     # Last resort: embedding similarity (capped at partial credit)
-    chunks = [c.strip() for c in re.split(r"(?<=[.!?])\s+", passage) if c.strip()]
+    chunks = [c.strip() for c in _SENTENCE_END.split(passage) if c.strip()]
     if not chunks:
         return 0.0
     embs = _model().encode([citation] + chunks, convert_to_numpy=True)

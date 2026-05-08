@@ -93,6 +93,8 @@ median voting actually reduces variance. Real bias reduction requires a
 
 ## Architecture
 
+> Module list reflects the post-remediation target state. Until Task 3.1 lands, `vf_env.py` does not yet exist and `DebateEnv` is loaded directly. See [the remediation plan](docs/superpowers/plans/2026-05-07-rl-env-remediation.md) for the staged refactor.
+
 - `environment.py` — `vf.Environment` subclass; orchestrates multi-turn rollouts; exposes `load_environment()`
 - `rubric/` — 7 reward components (3 programmatic, 4 LLM-judge); each is an async `(traj, **kwargs) -> float` callable that plugs into `vf.Rubric(funcs=[...])`
 - `agents.py` — multi-provider LLM client (OpenAI / Anthropic / Google) with retry

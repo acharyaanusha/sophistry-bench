@@ -24,8 +24,12 @@ def main() -> None:
     parser.add_argument("--quality-json", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("leaderboard.json"))
     parser.add_argument("--debaters", nargs="+", required=True,
-                        help="Specs as provider:model, e.g. openai:gpt-4o")
-    parser.add_argument("--judge", default="openai:gpt-4o-mini")
+                        help="Specs as provider:model, e.g. openai:gpt-4o or anthropic:claude-sonnet-4-6. "
+                             "Per Khan et al. 2024, debaters should be stronger than the judge.")
+    parser.add_argument("--judge", default="openai:gpt-4o-mini",
+                        help="Judge spec as provider:model (default: openai:gpt-4o-mini). "
+                             "Should be weaker than the debaters — use e.g. anthropic:claude-haiku-4-5 "
+                             "when debating with Anthropic models.")
     parser.add_argument("--n-tasks", type=int, default=20,
                         help="Number of QuALITY items (each yields 2 debate rounds)")
     parser.add_argument("--turns", type=int, default=3)

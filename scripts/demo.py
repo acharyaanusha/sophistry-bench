@@ -23,7 +23,12 @@ async def main():
     _load_env_file(Path(__file__).parent.parent / ".env")
 
     debater_provider = os.environ.get("SOPHISTRY_DEMO_PROVIDER", "anthropic")
-    debater_model = os.environ.get("SOPHISTRY_DEMO_MODEL", "claude-haiku-4-5")
+    # Debater defaults to the stronger tier; judge defaults to the weaker tier.
+    # Per Khan et al. 2024: capability asymmetry (stronger debater, weaker judge) is the key test condition.
+    _DEFAULT_DEBATER = "claude-sonnet-4-6" if debater_provider == "anthropic" else "gpt-4o"
+    _DEFAULT_JUDGE = "claude-haiku-4-5" if debater_provider == "anthropic" else "gpt-4o-mini"
+    debater_model = os.environ.get("SOPHISTRY_DEMO_MODEL", _DEFAULT_DEBATER)
+    judge_model = os.environ.get("SOPHISTRY_DEMO_JUDGE_MODEL", _DEFAULT_JUDGE)
     judge_pool_size = int(os.environ.get("SOPHISTRY_DEMO_POOL_SIZE", "3"))
 
     task = DebateTask(
@@ -42,13 +47,13 @@ async def main():
     env = DebateEnv(
         debater_a_client=LLMClient(provider=debater_provider), debater_a_model=debater_model,
         debater_b_client=LLMClient(provider=debater_provider), debater_b_model=debater_model,
-        judge_client=LLMClient(provider=debater_provider), judge_model=debater_model,
+        judge_client=LLMClient(provider=debater_provider), judge_model=judge_model,
         turns_per_debater=2,
     )
-    pool = JudgePool([(debater_provider, debater_model, None) for _ in range(judge_pool_size)])
+    pool = JudgePool([(debater_provider, judge_model, None) for _ in range(judge_pool_size)])
     rubric = SophistryRubric(judge_pool=pool)
 
-    print(f"Provider: {debater_provider}  Model: {debater_model}  Judge pool size: {judge_pool_size}")
+    print(f"Provider: {debater_provider}  Debater: {debater_model}  Judge: {judge_model}  Pool size: {judge_pool_size}")
     print(f"Question: {task.question}")
     print(f"  Debater A argues: {task.debater_a_answer}  (gold: {task.gold_answer})")
     print(f"  Debater B argues: {task.debater_b_answer}")

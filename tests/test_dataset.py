@@ -87,12 +87,12 @@ def test_pick_distractor_distributes_across_seeds():
 def test_stable_hash_is_process_stable():
     """stable_hash must produce identical output across processes / runs."""
     from sophistry_bench.dataset import stable_hash
-    # Known fixed input → known fixed output. If this assertion ever fails,
-    # the implementation changed in a way that breaks reproducibility.
     h = stable_hash("article-42")
+    # Hard-coded known value (SHA-256 truncated to 16 hex chars). If this
+    # assertion ever fails, the implementation changed in a way that breaks
+    # cross-process reproducibility.
+    assert h == 3756391354745862525
     assert isinstance(h, int)
     assert h >= 0
-    # Reproducibility: same input → same output, no matter how many times we call.
     assert stable_hash("article-42") == h
-    # Different input → different output (sanity check).
     assert stable_hash("article-43") != h

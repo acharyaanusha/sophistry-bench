@@ -1,5 +1,16 @@
 """Thin verifiers-spec wrapper around DebateEnv for Prime Intellect Hub publication.
 
+Known limitations (v1)
+----------------------
+- **On-policy GRPO training is not supported.** The verifiers GRPO trainer's
+  `process_chat_format_vllm` assumes ``state["responses"]`` contains one
+  ``ChatCompletion`` per assistant turn in the completion. Our ``rollout()``
+  override produces multi-agent debate turns from internal ``DebateEnv`` calls
+  and does not populate ``responses``. Supported v1 use cases: inference,
+  eval/leaderboard, DPO preference-pair generation. To add GRPO support, the
+  rollout would need to thread per-turn ``ChatCompletion`` objects (with token
+  logprobs) into ``state["responses"]``.
+
 Design choice — base class: ``MultiTurnEnv``
 =============================================
 The verifiers package (0.1.5) exposes three concrete options:
@@ -164,10 +175,11 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
         debate_env: DebateEnv,
         rubric_obj: SophistryRubric,
         dataset: Dataset,
+        weights: list[float] | None = None,
         **kwargs: Any,
     ) -> None:
         reward_funcs = _build_reward_funcs(rubric_obj)
-        rubric = vf.Rubric(funcs=reward_funcs, weights=[1.0, 0.5])
+        rubric = vf.Rubric(funcs=reward_funcs, weights=weights or [1.0, 0.5])
         super().__init__(
             dataset=dataset,
             rubric=rubric,
@@ -235,14 +247,7 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
         # Reconstruct the DebateTask from the info column.
         if isinstance(info, str):
             info = json.loads(info)
-        raw = info.get("task_json") or info  # fallback if already a dict
-        if isinstance(raw, str):
-            task_data = json.loads(raw)
-        elif isinstance(info, dict) and "article_id" in info:
-            task_data = info
-        else:
-            # info was serialised as JSON string by a_generate; decode it.
-            task_data = json.loads(json.dumps(info))
+        task_data = info
 
         debate_task = DebateTask(**task_data)
 
@@ -296,6 +301,7 @@ def load_environment(
     judge_pool_size: int = 3,
     turns_per_debater: int = 3,
     seed: int = 0,
+    reward_weights: list[float] | None = None,
     **_: Any,
 ) -> vf.Environment:
     """Create and return a ``SophistryDebateEnv`` (a ``vf.Environment``).
@@ -315,6 +321,9 @@ def load_environment(
             reduce variance but increase cost.
         turns_per_debater: Number of argument rounds each debater gets.
         seed: Random seed for deterministic distractor selection.
+        reward_weights: Two-element list ``[aggregate_weight, correctness_weight]``
+            passed to ``vf.Rubric``.  Defaults to ``[1.0, 0.5]``.  Override to
+            rebalance the composite signal during training experiments.
 
     Returns:
         A ``SophistryDebateEnv`` instance, which is a ``vf.Environment``
@@ -322,6 +331,9 @@ def load_environment(
     """
     items = load_quality_from_json(quality_json)
     dataset = _quality_to_hf_dataset(items, seed=seed)
+    # Default weights: aggregate (composite reward signal) gets 2x correctness
+    # (binary indicator of gold-side win). Tweak per training experiment.
+    weights = reward_weights if reward_weights is not None else [1.0, 0.5]
 
     d_provider, d_model = debater.split(":", 1)
     j_provider, j_model = judge.split(":", 1)
@@ -345,4 +357,5 @@ def load_environment(
         debate_env=debate_env,
         rubric_obj=rubric_obj,
         dataset=dataset,
+        weights=weights,
     )

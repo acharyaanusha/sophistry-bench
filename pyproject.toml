@@ -5,20 +5,21 @@ description = "RL environment for asymmetric-info debate with sophistry-decompos
 requires-python = ">=3.11"
 keywords = ["debate", "multi-agent", "rubric", "rl-environment", "verifiers", "QuALITY"]
 dependencies = [
-    "verifiers>=0.1",
-    "openai>=1.50",
     "anthropic>=0.40",
-    "google-genai>=0.2",
     "datasets>=2.20",
-    "pydantic>=2.7",
+    "google-genai>=0.2",
     "numpy>=1.26",
+    "openai>=1.50",
+    "pydantic>=2.7",
     "sentence-transformers>=3.0",
     "tenacity>=8.5",
+    "verifiers>=0.1.5",
 ]
 
 [project.urls]
 Homepage = "https://github.com/acharyaanusha/sophistry-bench"
 Repository = "https://github.com/acharyaanusha/sophistry-bench"
+Issues = "https://github.com/acharyaanusha/sophistry-bench/issues"
 
 [project.optional-dependencies]
 dev = [

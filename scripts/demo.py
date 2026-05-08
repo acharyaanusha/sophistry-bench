@@ -7,6 +7,12 @@ from sophistry_bench.dataset import DebateTask
 from sophistry_bench.environment import DebateEnv
 from sophistry_bench.rubric import JudgePool, SophistryRubric
 
+_PROVIDER_DEFAULTS = {
+    "anthropic": ("claude-sonnet-4-6", "claude-haiku-4-5"),
+    "openai": ("gpt-4o", "gpt-4o-mini"),
+    "google": ("gemini-1.5-pro", "gemini-1.5-flash"),
+}
+
 
 def _load_env_file(path: Path) -> None:
     if not path.exists():
@@ -25,10 +31,11 @@ async def main():
     debater_provider = os.environ.get("SOPHISTRY_DEMO_PROVIDER", "anthropic")
     # Debater defaults to the stronger tier; judge defaults to the weaker tier.
     # Per Khan et al. 2024: capability asymmetry (stronger debater, weaker judge) is the key test condition.
-    _DEFAULT_DEBATER = "claude-sonnet-4-6" if debater_provider == "anthropic" else "gpt-4o"
-    _DEFAULT_JUDGE = "claude-haiku-4-5" if debater_provider == "anthropic" else "gpt-4o-mini"
-    debater_model = os.environ.get("SOPHISTRY_DEMO_MODEL", _DEFAULT_DEBATER)
-    judge_model = os.environ.get("SOPHISTRY_DEMO_JUDGE_MODEL", _DEFAULT_JUDGE)
+    if debater_provider not in _PROVIDER_DEFAULTS:
+        raise SystemExit(f"Unsupported provider: {debater_provider}. Supported: {list(_PROVIDER_DEFAULTS)}")
+    default_debater, default_judge = _PROVIDER_DEFAULTS[debater_provider]
+    debater_model = os.environ.get("SOPHISTRY_DEMO_MODEL", default_debater)
+    judge_model = os.environ.get("SOPHISTRY_DEMO_JUDGE_MODEL", default_judge)
     judge_pool_size = int(os.environ.get("SOPHISTRY_DEMO_POOL_SIZE", "3"))
 
     task = DebateTask(

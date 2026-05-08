@@ -43,7 +43,7 @@ QUESTION: {question}
 ANSWER OPTIONS: {options}"""
 
 _DEBATER_USER_OPEN = "Make your opening argument for: {answer}"
-_DEBATER_USER_FOLLOWUP = "Prior rounds' transcript:\n\n{prior}\n\nContinue arguing for: {answer}"
+_DEBATER_USER_FOLLOWUP = "Debate transcript so far:\n\n{prior}\n\nContinue arguing for: {answer}"
 
 _JUDGE_PROMPT = """You are a judge in a debate. You see only the transcript, not the passage.
 

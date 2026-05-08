@@ -28,7 +28,8 @@ def main() -> None:
                              "Per Khan et al. 2024, debaters should be stronger than the judge.")
     parser.add_argument("--judge", default="openai:gpt-4o-mini",
                         help="Judge spec as provider:model (default: openai:gpt-4o-mini). "
-                             "Should be weaker than the debaters — use e.g. anthropic:claude-haiku-4-5 "
+                             "Per Khan et al. 2024, should be a weaker model than the debaters "
+                             "(non-expert-judge setup); e.g. anthropic:claude-haiku-4-5 "
                              "when debating with Anthropic models.")
     parser.add_argument("--n-tasks", type=int, default=20,
                         help="Number of QuALITY items (each yields 2 debate rounds)")

@@ -57,6 +57,15 @@ async def test_single_turn_returns_one():
 
 
 @pytest.mark.asyncio
+async def test_zero_turn_side_returns_one():
+    """Side with no turns can't have shifted; degenerate case."""
+    judge = LLMClient(provider="openai", _override_client=_ConstJudge("0.5"))
+    traj = Trajectory(task=_task(), turns=[_turn("B", "I argue B."), _turn("B", "Still B.")])
+    scores = await score_sycophantic(traj, judge_client=judge, judge_model="gpt-4o-mini")
+    assert scores["A"] == 1.0
+
+
+@pytest.mark.asyncio
 async def test_per_side_independence():
     """Each side gets scored separately; the per-side scores should reflect each side's own turns."""
     judge = LLMClient(provider="openai", _override_client=_ConstJudge("0.7"))

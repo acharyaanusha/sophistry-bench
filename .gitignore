@@ -32,6 +32,7 @@ htmlcov/
 # Caches / artifacts
 .cache/
 *.log
+!artifacts/vf_eval_smoke.log
 rollouts/
 checkpoints/
 wandb/

@@ -36,6 +36,26 @@ export GOOGLE_API_KEY=...
 python scripts/demo.py
 ```
 
+### Verifiers-spec smoke test
+
+After install, confirm the env is wired correctly:
+
+```bash
+source .venv/bin/activate
+source .env  # loads ANTHROPIC_API_KEY and OPENAI_API_KEY
+vf-eval sophistry_bench --num-examples 2 --rollouts-per-example 1
+```
+
+Expected: 2 debate trajectories complete; reward summary prints. Example output:
+
+```
+reward: avg - 1.224, std - 0.023
+aggregate_reward: avg - 0.724, std - 0.023
+correctness_reward: avg - 1.000, std - 0.000
+```
+
+The composite `reward` is the weighted sum of `aggregate_reward` (weight 1.0) and `correctness_reward` (weight 0.5), so values above 1.0 are expected. Both sub-metrics are in [0, 1]. The full smoke-test log is at `artifacts/vf_eval_smoke.log`.
+
 ## Loading data
 
 QuALITY ships on HuggingFace as `emozilla/quality`. Use either source:

@@ -57,6 +57,7 @@ from sophistry_bench.dataset import (
     build_debate_tasks,
     load_quality_from_json,
     pick_distractor,
+    stable_hash,
 )
 from sophistry_bench.environment import DebateEnv, Trajectory
 from sophistry_bench.rubric import JudgePool, SophistryRubric
@@ -75,7 +76,7 @@ def _quality_to_hf_dataset(items, *, seed: int = 0) -> Dataset:
     """
     rows: list[dict] = []
     for item in items:
-        d_idx = pick_distractor(item, seed=seed + hash(item.article_id))
+        d_idx = pick_distractor(item, seed=seed + stable_hash(item.article_id))
         for task in build_debate_tasks(item, distractor_index=d_idx):
             task_dict = task.model_dump()
             # Build a minimal chat prompt (real debate messages are constructed
@@ -232,6 +233,8 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
         info = info or {}
 
         # Reconstruct the DebateTask from the info column.
+        if isinstance(info, str):
+            info = json.loads(info)
         raw = info.get("task_json") or info  # fallback if already a dict
         if isinstance(raw, str):
             task_data = json.loads(raw)

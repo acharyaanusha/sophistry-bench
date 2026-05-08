@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 
-from sophistry_bench.dataset import build_debate_tasks, load_quality_from_json, pick_distractor
+from sophistry_bench.dataset import build_debate_tasks, load_quality_from_json, pick_distractor, stable_hash
 from sophistry_bench.eval import run_leaderboard
 
 
@@ -45,7 +45,7 @@ def main() -> None:
     items = load_quality_from_json(args.quality_json)[: args.n_tasks]
     tasks = []
     for item in items:
-        distractor_idx = pick_distractor(item, seed=hash(item.article_id))
+        distractor_idx = pick_distractor(item, seed=stable_hash(item.article_id))
         tasks.extend(build_debate_tasks(item, distractor_index=distractor_idx))
 
     debater_specs = [tuple(d.split(":", 1)) for d in args.debaters]

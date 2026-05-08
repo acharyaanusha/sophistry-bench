@@ -1,8 +1,14 @@
+import hashlib as _hashlib
 import json
 import random as _random
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationInfo, field_validator
+
+
+def stable_hash(s: str) -> int:
+    """Process-stable hash of a string. Use instead of `hash()` for seed values."""
+    return int(_hashlib.sha256(s.encode("utf-8")).hexdigest()[:16], 16)
 
 
 class QualityItem(BaseModel):

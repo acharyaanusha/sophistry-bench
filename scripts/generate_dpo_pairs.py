@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from sophistry_bench.agents import LLMClient
-from sophistry_bench.dataset import build_debate_tasks, load_quality_from_json, pick_distractor
+from sophistry_bench.dataset import build_debate_tasks, load_quality_from_json, pick_distractor, stable_hash
 from sophistry_bench.environment import DebateEnv
 from sophistry_bench.eval import evaluate_model
 from sophistry_bench.rubric import JudgePool, SophistryRubric
@@ -15,7 +15,7 @@ async def _run(args: argparse.Namespace) -> None:
     items = load_quality_from_json(args.quality_json)[: args.n_items]
     base_tasks = []
     for item in items:
-        distractor_idx = pick_distractor(item, seed=hash(item.article_id))
+        distractor_idx = pick_distractor(item, seed=stable_hash(item.article_id))
         base_tasks.extend(build_debate_tasks(item, distractor_index=distractor_idx))
 
     tasks = base_tasks * args.n_samples_per_task

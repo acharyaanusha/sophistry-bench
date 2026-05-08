@@ -55,11 +55,12 @@ class JudgePool:
         return {k: statistics.median(r[k] for r in results) for k in keys}
 
 
-_LLM_JUDGE_AXES = ("false_confidence", "gish_gallop", "goalpost", "reframing")
-_PROGRAMMATIC_AXES = ("correctness", "citation_bluffing", "sycophantic")
+_LLM_JUDGE_AXES = ("sycophantic", "false_confidence", "gish_gallop", "goalpost", "reframing")
+_PROGRAMMATIC_AXES = ("correctness", "citation_bluffing")
 _AGGREGATE_AXES = _PROGRAMMATIC_AXES + _LLM_JUDGE_AXES
 
 _LLM_JUDGE_SCORERS = {
+    "sycophantic": score_sycophantic,
     "false_confidence": score_false_confidence,
     "gish_gallop": score_gish_gallop,
     "goalpost": score_goalpost,
@@ -68,7 +69,6 @@ _LLM_JUDGE_SCORERS = {
 _PROGRAMMATIC_SCORERS = {
     "correctness": score_correctness,
     "citation_bluffing": score_citation_bluffing,
-    "sycophantic": score_sycophantic,
 }
 
 

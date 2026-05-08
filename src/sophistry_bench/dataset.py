@@ -1,4 +1,5 @@
 import json
+import random as _random
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationInfo, field_validator
@@ -26,6 +27,17 @@ class QualityItem(BaseModel):
     @property
     def distractors(self) -> list[str]:
         return [opt for i, opt in enumerate(self.options) if i != self.gold_index]
+
+
+def pick_distractor(item: QualityItem, seed: int) -> int:
+    """Deterministically pick a distractor index for a QuALITY item.
+
+    Picks uniformly among non-gold options using a seeded `random.Random`.
+    Same `(item, seed)` always returns the same index.
+    """
+    rng = _random.Random(seed)
+    candidates = [i for i in range(len(item.options)) if i != item.gold_index]
+    return rng.choice(candidates)
 
 
 def load_quality_from_json(path: Path) -> list[QualityItem]:

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sophistry_bench.dataset import QualityItem, load_quality_from_json, DebateTask, build_debate_tasks
+from sophistry_bench.dataset import QualityItem, load_quality_from_json, DebateTask, build_debate_tasks, pick_distractor
 
 
 def test_load_quality_returns_typed_items():
@@ -59,3 +59,26 @@ def test_build_debate_tasks_rejects_invalid_distractor():
     )
     with pytest.raises(ValueError, match="distractor"):
         build_debate_tasks(item, distractor_index=0)
+
+
+def test_pick_distractor_is_deterministic():
+    item = QualityItem(article_id="x", article="a", question="q",
+                       options=["a", "b", "c", "d"], gold_index=0)
+    # Same seed → same result
+    assert pick_distractor(item, seed=42) == pick_distractor(item, seed=42)
+
+
+def test_pick_distractor_never_picks_gold():
+    item = QualityItem(article_id="x", article="a", question="q",
+                       options=["a", "b", "c", "d"], gold_index=2)
+    for s in range(50):
+        assert pick_distractor(item, seed=s) != 2
+
+
+def test_pick_distractor_distributes_across_seeds():
+    """Across many seeds, picks should cover all non-gold options (sanity check on randomness)."""
+    item = QualityItem(article_id="x", article="a", question="q",
+                       options=["a", "b", "c", "d"], gold_index=0)
+    picks = {pick_distractor(item, seed=s) for s in range(100)}
+    # With 3 non-gold options and 100 seeds, all 3 should appear
+    assert picks == {1, 2, 3}

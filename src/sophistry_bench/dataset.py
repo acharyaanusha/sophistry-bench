@@ -42,6 +42,61 @@ def load_quality_from_json(path: Path) -> list[QualityItem]:
     ]
 
 
+def load_quality_from_hub(
+    *,
+    split: str = "validation",
+    limit: int | None = None,
+    cache_path: Path | str | None = None,
+    hub_name: str = "emozilla/quality",
+    shuffle: bool = True,
+    seed: int = 42,
+    one_question_per_article: bool = True,
+) -> list[QualityItem]:
+    """Load QuALITY items from the HuggingFace hub.
+
+    The hub orders rows grouped by article, so naive `limit=N` slicing
+    samples N questions about the SAME article. Defaults shuffle the dataset
+    and take at most one question per article so a small `limit` produces
+    article-diverse items suitable for a leaderboard.
+    """
+    from datasets import load_dataset
+
+    ds = load_dataset(hub_name, split=split)
+    if shuffle:
+        ds = ds.shuffle(seed=seed)
+
+    items: list[QualityItem] = []
+    raw_records: list[dict] = []
+    seen_articles: set[str] = set()
+
+    for row in ds:
+        article = row["article"]
+        if one_question_per_article and article in seen_articles:
+            continue
+        seen_articles.add(article)
+
+        article_id = str(row.get("article_id") or row.get("id") or len(items))
+        question = row["question"]
+        options = list(row["options"])
+        gold_index = int(row.get("gold_label", row.get("answer", -1)))
+        items.append(QualityItem(
+            article_id=article_id, article=article, question=question,
+            options=options, gold_index=gold_index,
+        ))
+        raw_records.append({
+            "article_id": article_id, "article": article, "question": question,
+            "options": options, "gold_label": gold_index,
+        })
+        if limit is not None and len(items) >= limit:
+            break
+
+    if cache_path is not None:
+        Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(cache_path).write_text(json.dumps(raw_records, indent=2))
+
+    return items
+
+
 class DebateTask(BaseModel):
     article_id: str
     article: str

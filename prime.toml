@@ -4,7 +4,7 @@ title = "Sophistry Bench"
 description = "Multi-turn debate environment that scores LLM debaters on six axes of sophistry: correctness, citation bluffing, sycophantic concession, false confidence, gish gallop, and goalpost shifting. Built on QuALITY long-form QA passages."
 authors = ["Sophistry Bench contributors"]
 license = "MIT"
-tags = ["debate", "multi-agent", "rubric", "evaluation", "verifiers", "QuALITY"]
+tags = ["debate", "multi-agent", "rubric", "evaluation", "QuALITY"]
 
 [entrypoint]
 module = "sophistry_bench.environment"
@@ -19,4 +19,5 @@ turns_per_debater = 3
 [training]
 recipe = "dpo"
 default_pair_count = 500
-sophistry_threshold = 0.6
+cleanliness_threshold = 0.6
+n_samples_per_task = 3

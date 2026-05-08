@@ -1,10 +1,22 @@
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from sophistry_bench.dataset import build_debate_tasks, load_quality_from_json
 from sophistry_bench.eval import run_leaderboard
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def main() -> None:
@@ -14,9 +26,16 @@ def main() -> None:
     parser.add_argument("--debaters", nargs="+", required=True,
                         help="Specs as provider:model, e.g. openai:gpt-4o")
     parser.add_argument("--judge", default="openai:gpt-4o-mini")
-    parser.add_argument("--n-tasks", type=int, default=20)
+    parser.add_argument("--n-tasks", type=int, default=20,
+                        help="Number of QuALITY items (each yields 2 debate rounds)")
     parser.add_argument("--turns", type=int, default=3)
+    parser.add_argument("--judge-pool-size", type=int, default=3,
+                        help="Number of judges (homogeneous pool from --judge); ignored if --judge-pool is given")
+    parser.add_argument("--judge-pool", nargs="+", default=None,
+                        help="Heterogeneous judge pool, e.g. anthropic:claude-haiku-4-5 anthropic:claude-sonnet-4-6")
     args = parser.parse_args()
+
+    _load_env_file(Path(__file__).parent.parent / ".env")
 
     items = load_quality_from_json(args.quality_json)[: args.n_tasks]
     tasks = []
@@ -26,6 +45,7 @@ def main() -> None:
 
     debater_specs = [tuple(d.split(":", 1)) for d in args.debaters]
     judge_spec = tuple(args.judge.split(":", 1))
+    pool_specs = [tuple(j.split(":", 1)) for j in args.judge_pool] if args.judge_pool else None
 
     asyncio.run(run_leaderboard(
         debater_specs=debater_specs,
@@ -33,6 +53,8 @@ def main() -> None:
         tasks=tasks,
         output_path=args.output,
         turns_per_debater=args.turns,
+        judge_pool_size=args.judge_pool_size,
+        pool_specs=pool_specs,
     ))
     print(f"Wrote {args.output}")
     print(json.dumps(json.loads(args.output.read_text()), indent=2))

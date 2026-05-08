@@ -1,5 +1,6 @@
 import asyncio
-import json
+import os
+from pathlib import Path
 
 from sophistry_bench.agents import LLMClient
 from sophistry_bench.dataset import DebateTask
@@ -7,7 +8,24 @@ from sophistry_bench.environment import DebateEnv
 from sophistry_bench.rubric import JudgePool, SophistryRubric
 
 
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 async def main():
+    _load_env_file(Path(__file__).parent.parent / ".env")
+
+    debater_provider = os.environ.get("SOPHISTRY_DEMO_PROVIDER", "anthropic")
+    debater_model = os.environ.get("SOPHISTRY_DEMO_MODEL", "claude-haiku-4-5")
+    judge_pool_size = int(os.environ.get("SOPHISTRY_DEMO_POOL_SIZE", "3"))
+
     task = DebateTask(
         article_id="demo",
         article=(
@@ -22,18 +40,49 @@ async def main():
         debater_b_answer="1908",
     )
     env = DebateEnv(
-        debater_a_client=LLMClient(provider="openai"), debater_a_model="gpt-4o-mini",
-        debater_b_client=LLMClient(provider="openai"), debater_b_model="gpt-4o-mini",
-        judge_client=LLMClient(provider="openai"), judge_model="gpt-4o-mini",
+        debater_a_client=LLMClient(provider=debater_provider), debater_a_model=debater_model,
+        debater_b_client=LLMClient(provider=debater_provider), debater_b_model=debater_model,
+        judge_client=LLMClient(provider=debater_provider), judge_model=debater_model,
         turns_per_debater=2,
     )
-    pool = JudgePool([("openai", "gpt-4o-mini", None) for _ in range(3)])
+    pool = JudgePool([(debater_provider, debater_model, None) for _ in range(judge_pool_size)])
     rubric = SophistryRubric(judge_pool=pool)
+
+    print(f"Provider: {debater_provider}  Model: {debater_model}  Judge pool size: {judge_pool_size}")
+    print(f"Question: {task.question}")
+    print(f"  Debater A argues: {task.debater_a_answer}  (gold: {task.gold_answer})")
+    print(f"  Debater B argues: {task.debater_b_answer}")
+    print()
+
     traj = await env.rollout(task)
+
+    for i, turn in enumerate(traj.turns, start=1):
+        print(f"--- Turn {i}: Debater {turn.debater} ---")
+        print(turn.text.strip())
+        print(f"  parsed claims: {len(turn.parsed.claims)}, citations: {len(turn.parsed.citations)}")
+        print()
+
+    print(f"Judge ruling: winner={traj.ruling.winner}")
+    print(f"Judge reasoning (raw): {traj.ruling.reasoning.strip()[:200]}")
+    print()
+
+    print("Scoring rubric...")
     scores = await rubric.score(traj)
-    print("Winner:", traj.ruling.winner)
-    print("Scores:")
-    print(json.dumps(scores, indent=2))
+    _print_score_table(scores)
+
+
+def _print_score_table(scores: dict[str, float]) -> None:
+    axes = ("correctness", "citation_bluffing", "sycophantic",
+            "false_confidence", "gish_gallop", "goalpost", "reframing")
+    print(f"{'axis':<22} {'A':>7} {'B':>7} {'mean':>7}")
+    print("-" * 46)
+    for axis in axes:
+        a = scores.get(f"{axis}_A", float("nan"))
+        b = scores.get(f"{axis}_B", float("nan"))
+        m = scores.get(axis, float("nan"))
+        print(f"{axis:<22} {a:>7.3f} {b:>7.3f} {m:>7.3f}")
+    print("-" * 46)
+    print(f"{'aggregate':<22} {'':>7} {'':>7} {scores['aggregate']:>7.3f}")
 
 
 if __name__ == "__main__":

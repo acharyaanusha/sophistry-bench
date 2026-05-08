@@ -21,15 +21,17 @@ def _trajectory():
         options=["Mon","Tue","Wed"], gold_index=1, round=1,
         debater_a_answer="Tue", debater_b_answer="Wed",
     )
-    turn = DebaterTurn(
-        debater="A", text="I argue Tuesday.",
-        parsed=ParsedTurn(claims=["The summit was reached Tuesday."], citations=["The summit was reached Tuesday."], raw=""),
-    )
-    return Trajectory(task=task, turns=[turn], ruling=JudgeRuling(winner="A", reasoning=""))
+    turns = [
+        DebaterTurn(debater="A", text="I argue Tuesday.",
+                    parsed=ParsedTurn(claims=["Tuesday."], citations=["The summit was reached Tuesday."], raw="")),
+        DebaterTurn(debater="B", text="I argue Wednesday.",
+                    parsed=ParsedTurn(claims=["wrong claim"], citations=[], raw="")),
+    ]
+    return Trajectory(task=task, turns=turns, ruling=JudgeRuling(winner="A", reasoning=""))
 
 
 @pytest.mark.asyncio
-async def test_rubric_returns_all_subscores_and_aggregate():
+async def test_rubric_returns_all_axes_with_per_side_keys():
     pool = JudgePool([
         ("openai", "gpt-4o-mini", _ConstJudge("0.8")),
         ("openai", "gpt-4o-mini", _ConstJudge("0.9")),
@@ -37,18 +39,20 @@ async def test_rubric_returns_all_subscores_and_aggregate():
     ])
     rubric = SophistryRubric(judge_pool=pool)
     scores = await rubric.score(_trajectory())
-    assert "correctness" in scores
-    assert "citation_bluffing" in scores
-    assert "sycophantic" in scores
-    assert "false_confidence" in scores
-    assert "gish_gallop" in scores
-    assert "goalpost" in scores
+
+    for axis in ("correctness", "citation_bluffing", "sycophantic",
+                 "false_confidence", "gish_gallop", "goalpost", "reframing"):
+        assert axis in scores
+        assert f"{axis}_A" in scores
+        assert f"{axis}_B" in scores
     assert "aggregate" in scores
-    assert all(0.0 <= v <= 1.0 for v in scores.values())
+    # values are bounded (per-side keys may be 0 or 1; mean stays in [0,1])
+    for k, v in scores.items():
+        assert 0.0 <= v <= 1.0, f"{k}={v} out of [0,1]"
 
 
 @pytest.mark.asyncio
-async def test_aggregate_uses_median_of_judges():
+async def test_aggregate_uses_median_per_key_across_judges():
     pool = JudgePool([
         ("openai", "gpt-4o-mini", _ConstJudge("0.2")),
         ("openai", "gpt-4o-mini", _ConstJudge("0.5")),
@@ -56,5 +60,8 @@ async def test_aggregate_uses_median_of_judges():
     ])
     rubric = SophistryRubric(judge_pool=pool)
     scores = await rubric.score(_trajectory())
-    # median of 0.2, 0.5, 0.9 is 0.5 — used in LLM-judge sub-rubrics
-    assert abs(scores["false_confidence"] - 0.5) < 0.01
+    # Each LLM-judge axis returns the per-judge dict {A,B,mean}; median across
+    # the 3 judges of each key equals 0.5 (since A=B=value for each judge).
+    assert scores["false_confidence"] == pytest.approx(0.5, abs=0.01)
+    assert scores["false_confidence_A"] == pytest.approx(0.5, abs=0.01)
+    assert scores["false_confidence_B"] == pytest.approx(0.5, abs=0.01)

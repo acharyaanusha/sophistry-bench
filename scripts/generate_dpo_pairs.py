@@ -13,10 +13,12 @@ from sophistry_bench.train import build_dpo_pairs
 
 async def _run(args: argparse.Namespace) -> None:
     items = load_quality_from_json(args.quality_json)[: args.n_items]
-    tasks = []
+    base_tasks = []
     for item in items:
         distractor_idx = next(i for i in range(len(item.options)) if i != item.gold_index)
-        tasks.extend(build_debate_tasks(item, distractor_index=distractor_idx))
+        base_tasks.extend(build_debate_tasks(item, distractor_index=distractor_idx))
+
+    tasks = base_tasks * args.n_samples_per_task
 
     provider, model = args.debater.split(":", 1)
     j_provider, j_model = args.judge.split(":", 1)
@@ -26,13 +28,17 @@ async def _run(args: argparse.Namespace) -> None:
         judge_client=LLMClient(provider=j_provider), judge_model=j_model,
         turns_per_debater=args.turns,
     )
-    pool = JudgePool([(j_provider, j_model, None) for _ in range(3)])
+    pool = JudgePool([(j_provider, j_model, None) for _ in range(args.judge_pool_size)])
     rubric = SophistryRubric(judge_pool=pool)
     result = await evaluate_model(env=env, rubric=rubric, tasks=tasks)
-    scores_by_id = {id(t): s for t, s in zip(result.trajectories, result.per_task_scores)}
-    pairs = build_dpo_pairs(result.trajectories, scores_by_id, cleanliness_threshold=args.threshold)
+    scored = list(zip(result.trajectories, result.per_task_scores))
+    pairs = build_dpo_pairs(
+        scored,
+        cleanliness_threshold=args.threshold,
+        min_gap=args.min_gap,
+    )
     Path(args.output).write_text("\n".join(json.dumps(p) for p in pairs))
-    print(f"Wrote {len(pairs)} pairs to {args.output}")
+    print(f"Wrote {len(pairs)} pairs to {args.output} (from {len(tasks)} rollouts)")
 
 
 def main() -> None:
@@ -42,7 +48,13 @@ def main() -> None:
     p.add_argument("--judge", default="openai:gpt-4o-mini")
     p.add_argument("--turns", type=int, default=3)
     p.add_argument("--n-items", type=int, default=500)
-    p.add_argument("--threshold", type=float, default=0.6)
+    p.add_argument("--n-samples-per-task", type=int, default=3,
+                   help="Number of rollouts per (task, side) group; ≥2 required for any pair")
+    p.add_argument("--threshold", type=float, default=0.6,
+                   help="Minimum aggregate score for a 'chosen' trajectory")
+    p.add_argument("--min-gap", type=float, default=0.1,
+                   help="Minimum aggregate gap between chosen and rejected")
+    p.add_argument("--judge-pool-size", type=int, default=3)
     p.add_argument("--output", type=Path, default=Path("dpo_pairs.jsonl"))
     args = p.parse_args()
     asyncio.run(_run(args))

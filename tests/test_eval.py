@@ -1,8 +1,9 @@
 import json
+import warnings
 
 import pytest
 
-from sophistry_bench.eval import EvalResult, evaluate_model
+from sophistry_bench.eval import EvalResult, compare_leaderboards, evaluate_model
 from sophistry_bench.dataset import DebateTask
 
 
@@ -51,6 +52,28 @@ async def test_evaluate_model_returns_aggregated_subscores():
 
 
 @pytest.mark.asyncio
+async def test_evaluate_model_handles_empty_tasks():
+    from sophistry_bench.agents import LLMClient
+    from sophistry_bench.environment import DebateEnv
+    from sophistry_bench.rubric import JudgePool, SophistryRubric
+
+    env = DebateEnv(
+        debater_a_client=LLMClient(provider="openai", _override_client=_AlwaysReturns("x")),
+        debater_a_model="m",
+        debater_b_client=LLMClient(provider="openai", _override_client=_AlwaysReturns("y")),
+        debater_b_model="m",
+        judge_client=LLMClient(provider="openai", _override_client=_AlwaysReturns("A")),
+        judge_model="m",
+    )
+    pool = JudgePool([("openai", "gpt-4o-mini", _AlwaysReturns("0.5"))])
+    rubric = SophistryRubric(judge_pool=pool)
+    result = await evaluate_model(env=env, rubric=rubric, tasks=[])
+    assert result.n == 0
+    assert result.mean_subscores == {}
+    assert result.trajectories == []
+
+
+@pytest.mark.asyncio
 async def test_run_leaderboard_writes_json(tmp_path):
     from sophistry_bench.eval import run_leaderboard
 
@@ -78,21 +101,33 @@ async def test_run_leaderboard_writes_json(tmp_path):
     assert "mean_subscores" in data["openai:gpt-4o-mini"]
 
 
-def test_compare_leaderboards_returns_deltas():
-    from sophistry_bench.eval import compare_leaderboards
+def test_compare_leaderboards_pre_post_finetune_does_not_warn():
+    """The intended use case (one base model vs one fine-tuned model) must not warn."""
     before = {"openai:gpt-4o-mini": {"n": 10, "mean_subscores": {"aggregate": 0.5, "correctness": 0.6, "citation_bluffing": 0.7}}}
-    after = {"openai:gpt-4o-mini-ft": {"n": 10, "mean_subscores": {"aggregate": 0.65, "correctness": 0.7, "citation_bluffing": 0.85}}}
-    deltas = compare_leaderboards(before, after)
+    after = {"openai:ft:gpt-4o-mini-2024-07-18:custom:abc": {"n": 10, "mean_subscores": {"aggregate": 0.65, "correctness": 0.7, "citation_bluffing": 0.85}}}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        deltas = compare_leaderboards(before, after)
     assert deltas["aggregate"] == pytest.approx(0.15)
     assert deltas["citation_bluffing"] == pytest.approx(0.15)
+    assert not any("compare_leaderboards" in str(w.message) for w in caught)
 
 
-def test_compare_leaderboards_warns_on_mismatched_keys():
-    import warnings
-    from sophistry_bench.eval import compare_leaderboards
-    before = {"a:m": {"n": 1, "mean_subscores": {"aggregate": 0.5}}}
-    after = {"b:m": {"n": 1, "mean_subscores": {"aggregate": 0.6}}}
+def test_compare_leaderboards_warns_only_on_disjoint_multi_model():
+    before = {"a:m": {"n": 1, "mean_subscores": {"aggregate": 0.5}}, "b:m": {"n": 1, "mean_subscores": {"aggregate": 0.4}}}
+    after = {"c:m": {"n": 1, "mean_subscores": {"aggregate": 0.6}}, "d:m": {"n": 1, "mean_subscores": {"aggregate": 0.5}}}
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         compare_leaderboards(before, after)
-    assert any("different model keys" in str(w.message) for w in caught)
+    assert any("no shared model key" in str(w.message) for w in caught)
+
+
+def test_compare_leaderboards_uses_shared_key_when_available():
+    before = {"a:m": {"n": 1, "mean_subscores": {"aggregate": 0.5}}, "shared:m": {"n": 1, "mean_subscores": {"aggregate": 0.4}}}
+    after = {"shared:m": {"n": 1, "mean_subscores": {"aggregate": 0.7}}, "z:m": {"n": 1, "mean_subscores": {"aggregate": 0.5}}}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        deltas = compare_leaderboards(before, after)
+    # 0.7 - 0.4 = 0.3 (uses shared:m on both sides)
+    assert deltas["aggregate"] == pytest.approx(0.3)
+    assert not any("no shared" in str(w.message) for w in caught)

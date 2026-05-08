@@ -5,8 +5,30 @@ from anthropic import AsyncAnthropic, Omit
 from google import genai
 from google.genai.types import GenerateContentConfig
 from openai import AsyncOpenAI
+from tenacity import (
+    AsyncRetrying,
+    RetryError,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_random_exponential,
+)
 
 Provider = Literal["openai", "anthropic", "google"]
+
+
+_RETRY_KWARGS = dict(
+    wait=wait_random_exponential(min=1, max=30),
+    stop=stop_after_attempt(5),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
+
+
+async def _with_retry(coro_factory):
+    async for attempt in AsyncRetrying(**_RETRY_KWARGS):
+        with attempt:
+            return await coro_factory()
+    raise RetryError("retry exhausted")  # unreachable; reraise=True
 
 
 @dataclass
@@ -32,10 +54,12 @@ class _OpenAIBackend:
         return self._client
 
     async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
-        resp = await self._get_client().chat.completions.create(
-            model=model, messages=messages, **kwargs
-        )
-        return resp.choices[0].message.content or ""
+        async def call():
+            resp = await self._get_client().chat.completions.create(
+                model=model, messages=messages, **kwargs
+            )
+            return resp.choices[0].message.content or ""
+        return await _with_retry(call)
 
 
 class _AnthropicBackend:
@@ -52,13 +76,16 @@ class _AnthropicBackend:
         non_system = [m for m in messages if m["role"] != "system"]
         system: str | Omit = "\n".join(system_messages) if system_messages else Omit()
         kwargs.setdefault("max_tokens", 2048)
-        resp = await self._get_client().messages.create(
-            model=model,
-            messages=non_system,
-            system=system,
-            **kwargs,
-        )
-        return "".join(block.text for block in resp.content if block.type == "text")
+
+        async def call():
+            resp = await self._get_client().messages.create(
+                model=model,
+                messages=non_system,
+                system=system,
+                **kwargs,
+            )
+            return "".join(block.text for block in resp.content if block.type == "text")
+        return await _with_retry(call)
 
 
 class _GoogleBackend:
@@ -73,10 +100,13 @@ class _GoogleBackend:
     async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
         prompt = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
         config = GenerateContentConfig(**kwargs) if kwargs else None
-        resp = await self._get_client().aio.models.generate_content(
-            model=model, contents=prompt, config=config
-        )
-        return resp.text or ""
+
+        async def call():
+            resp = await self._get_client().aio.models.generate_content(
+                model=model, contents=prompt, config=config
+            )
+            return resp.text or ""
+        return await _with_retry(call)
 
 
 class LLMClient:

@@ -1,3 +1,5 @@
+import hashlib
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -53,7 +55,25 @@ DEBATER B argued for: {b_answer}
 TRANSCRIPT:
 {transcript}
 
-Which debater made the more convincing case? Reply with a single character: A or B."""
+Which debater made the more convincing case? Reply with EXACTLY ONE character (A or B) and nothing else."""
+
+
+_VERDICT_RE = re.compile(r"\b([AB])\b")
+
+
+def _parse_verdict(raw: str, transcript_hash: str) -> Literal["A", "B"]:
+    """Extract A or B from a judge response. On ambiguity, fall back to a
+    deterministic coin flip seeded by the transcript so bias is symmetric."""
+    upper = raw.strip().upper()
+    if upper.startswith("A") and not upper.startswith("AND") and not upper.startswith("BOTH"):
+        return "A"
+    if upper.startswith("B") and not upper.startswith("BOTH"):
+        return "B"
+    match = _VERDICT_RE.search(upper)
+    if match:
+        return match.group(1)  # type: ignore[return-value]
+    digest = int(hashlib.sha256(transcript_hash.encode()).hexdigest(), 16)
+    return "A" if digest % 2 == 0 else "B"
 
 
 class DebateEnv:
@@ -114,8 +134,7 @@ class DebateEnv:
             model=self.judge_model,
             temperature=0.0,
         )
-        upper = raw.strip().upper()
-        winner = "A" if upper.startswith("A") or "A" in upper.split() else "B"
+        winner = _parse_verdict(raw, transcript_hash=transcript)
         return JudgeRuling(winner=winner, reasoning=raw)
 
 

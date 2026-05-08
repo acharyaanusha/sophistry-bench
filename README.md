@@ -6,7 +6,7 @@ An RL environment for asymmetric-information debate, with a 6-component sophistr
 
 Two LLMs debate a multiple-choice question about a passage. Both see the passage; the judge does not. One debater argues the correct answer; the other argues a distractor. The judge picks a winner. The verifier scores not just correctness but **how** wins happen: citation bluffing, sycophantic concession, false confidence, gish gallop, goalpost shifting.
 
-Built on the [verifiers](https://github.com/PrimeIntellect-ai/verifiers) library; published on the [Prime Intellect Environments Hub](https://www.primeintellect.ai/blog/environments).
+Targets publication on the [Prime Intellect Environments Hub](https://www.primeintellect.ai/blog/environments).
 
 ## Setup
 
@@ -27,6 +27,18 @@ export GOOGLE_API_KEY=...
 python scripts/demo.py
 ```
 
+## Loading data
+
+QuALITY ships on HuggingFace as `emozilla/quality`. Use either source:
+
+```bash
+# Option A — pull directly from HuggingFace and cache locally
+python -c "from sophistry_bench.dataset import load_quality_from_hub; \
+  load_quality_from_hub(split='validation', limit=200, cache_path='data/quality_dev.json')"
+
+# Option B — bring your own JSON in the QualityItem schema (see fixture file)
+```
+
 ## Running the leaderboard
 
 ```bash
@@ -40,11 +52,16 @@ python scripts/run_eval.py \
 
 ## Generating DPO pairs and fine-tuning
 
+The pair generator runs `--n-samples-per-task` rollouts per (task, side) and
+pairs the cleanest argument vs the dirtiest argument *for the same assigned
+answer*. This isolates the sophistry signal from the answer-correctness signal.
+
 ```bash
 python scripts/generate_dpo_pairs.py \
   --quality-json data/quality_train.json \
   --debater openai:gpt-4o-mini \
   --n-items 500 \
+  --n-samples-per-task 3 \
   --output dpo_pairs.jsonl
 
 python scripts/finetune.py \
@@ -56,6 +73,12 @@ python scripts/finetune.py \
 python scripts/run_eval.py --debaters openai:ft:... ...
 python scripts/compare.py --before leaderboard.json --after leaderboard_ft.json
 ```
+
+## Multi-judge voting
+
+The `JudgePool` defaults to a 3-judge pool with non-zero temperature so that
+median voting actually reduces variance. Real bias reduction requires a
+*diverse* pool — pass entries with different providers/models if you can.
 
 ## Architecture
 

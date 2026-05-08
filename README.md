@@ -1,6 +1,6 @@
 # Sophistry Bench
 
-A `verifiers`-spec multi-turn RL environment that reproduces the asymmetric-information debate protocol from [Khan et al. 2024](https://arxiv.org/html/2407.04622) ("On scalable oversight with weak LLMs judging strong LLMs"), packaged for the [Prime Intellect Environments Hub](https://app.primeintellect.ai/dashboard/environments).
+A `verifiers`-spec multi-turn RL environment that reproduces the asymmetric-information debate protocol from [Khan et al. 2024](https://arxiv.org/abs/2402.06782) ("Debating with More Persuasive LLMs Leads to More Truthful Answers"), packaged for the [Prime Intellect Environments Hub](https://app.primeintellect.ai/dashboard/environments).
 
 ## What it is
 

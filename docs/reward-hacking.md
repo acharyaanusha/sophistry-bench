@@ -5,9 +5,6 @@ measurement instrument. Any LLM-judge component is gameable in principle. This
 document lists the failure modes we've identified so you can monitor for them
 during training and design ablations to test for them.
 
-If you find a new exploit, please open an issue or PR — concrete examples are
-the most useful contribution.
-
 ---
 
 ## Architectural mitigations already in place
@@ -114,4 +111,3 @@ specific axis, run:
 4. **Citation length distribution** — if mean citation length parks at
    `_MIN_CITATION_CHARS`, the policy is fishing for cheap verbatim matches.
 
-PRs adding ablation scripts for any of the above are very welcome.

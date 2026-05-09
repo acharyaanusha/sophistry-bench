@@ -68,7 +68,7 @@ async def main():
     pool = JudgePool([(j_provider, j_model, None) for _ in range(args.judge_pool_size)])
     rubric = SophistryRubric(judge_pool=pool)
 
-    print(f"\n=== Head-to-head debate ===")
+    print("\n=== Head-to-head debate ===")
     print(f"Item: article_id={item.article_id}  (passage {len(item.article)} chars)")
     print(f"Q: {task.question}")
     print()

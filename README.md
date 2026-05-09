@@ -13,7 +13,7 @@ Two LLMs debate a multiple-choice question about a passage. Both debaters see th
 | Protocol | Faithful reproduction of Khan et al. 2024's asymmetric-information debate |
 | Infra | First `verifiers`-spec packaging of asymmetric-info debate; hub-installable |
 | Reward shaping | Configurable 7-component reward signal for RL training experiments |
-| Trained baseline | Demonstrates trainability via a DPO proof-of-life run |
+| Trained baseline | Pipeline validated end-to-end (31 preference pairs produced from claude-haiku-4-5 rollouts on n=20 items, see `artifacts/dpo_pairs_pol.summary.txt`). Full gpt-4o-mini DPO fine-tune deferred to v1.1 due to current OpenAI rate-limit constraints; submit via `scripts/finetune.py` once the account is comfortable with ~800 RPM bursts. |
 
 The 7-component reward decomposition is **reward-shaping for training experiments**, not a measurement instrument — it has not been validated against human judgment. Any LLM-judge component is gameable in principle; failure modes are documented in `docs/reward-hacking.md`.
 

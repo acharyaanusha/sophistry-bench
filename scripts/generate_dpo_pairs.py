@@ -30,7 +30,7 @@ async def _run(args: argparse.Namespace) -> None:
     )
     pool = JudgePool([(j_provider, j_model, None) for _ in range(args.judge_pool_size)])
     rubric = SophistryRubric(judge_pool=pool)
-    result = await evaluate_model(env=env, rubric=rubric, tasks=tasks)
+    result = await evaluate_model(env=env, rubric=rubric, tasks=tasks, concurrency=args.concurrency)
     scored = list(zip(result.trajectories, result.per_task_scores))
     pairs = build_dpo_pairs(
         scored,
@@ -56,6 +56,8 @@ def main() -> None:
                    help="Minimum aggregate gap between chosen and rejected")
     p.add_argument("--judge-pool-size", type=int, default=3)
     p.add_argument("--output", type=Path, default=Path("dpo_pairs.jsonl"))
+    p.add_argument("--concurrency", type=int, default=2,
+                   help="Number of concurrent rollouts (lower = less TPM pressure)")
     args = p.parse_args()
     asyncio.run(_run(args))
 

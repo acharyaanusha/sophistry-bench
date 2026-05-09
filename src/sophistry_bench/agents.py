@@ -1,3 +1,5 @@
+import asyncio
+import os
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -17,11 +19,25 @@ Provider = Literal["openai", "anthropic", "google"]
 
 
 _RETRY_KWARGS = dict(
-    wait=wait_random_exponential(min=1, max=30),
-    stop=stop_after_attempt(5),
+    wait=wait_random_exponential(min=2, max=90),
+    stop=stop_after_attempt(8),
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
+
+# Global semaphore controlling max concurrent in-flight OpenAI API calls.
+# Default=4 works fine for Tier-1+.  Set OPENAI_CONCURRENCY=2 (or 1) when
+# running on a freshly-topped-up Tier-0/free account with low RPM limits.
+_OPENAI_MAX_CONCURRENT = int(os.environ.get("OPENAI_CONCURRENCY", "4"))
+# Lazily initialised so it's created in the correct event loop.
+_openai_sem: asyncio.Semaphore | None = None
+
+
+def _get_openai_sem() -> asyncio.Semaphore:
+    global _openai_sem
+    if _openai_sem is None:
+        _openai_sem = asyncio.Semaphore(_OPENAI_MAX_CONCURRENT)
+    return _openai_sem
 
 
 async def _with_retry(coro_factory):
@@ -55,9 +71,10 @@ class _OpenAIBackend:
 
     async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
         async def call():
-            resp = await self._get_client().chat.completions.create(
-                model=model, messages=messages, **kwargs
-            )
+            async with _get_openai_sem():
+                resp = await self._get_client().chat.completions.create(
+                    model=model, messages=messages, **kwargs
+                )
             return resp.choices[0].message.content or ""
         return await _with_retry(call)
 

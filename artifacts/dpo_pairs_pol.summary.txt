@@ -1,17 +1,17 @@
 DPO pair generation summary
 ---------------------------
-Date: Fri May  8 17:15:44 PDT 2026
+Date: Sat May  9 11:32:12 PDT 2026
 Source: data/quality_dev.json (n=20 items, 40 debate tasks)
-Debater: anthropic:claude-haiku-4-5  (fallback from openai:gpt-4o-mini — OpenAI quota exhausted)
-Judge: anthropic:claude-haiku-4-5    (fallback from openai:gpt-4o-mini — OpenAI quota exhausted)
+Debater: openai:gpt-4o-mini
+Judge:   anthropic:claude-haiku-4-5  (offloads rubric scoring from OpenAI to avoid TPM saturation)
 Samples per task: 3 (so 120 rollouts total)
 Filter: cleanliness >= 0.6, gap >= 0.1
-Pairs produced:       31
+Pairs produced: 38
 Pairs file (gitignored): dpo_pairs_pol.jsonl
 
 Notes:
-  - Original plan used openai:gpt-4o-mini; switched to anthropic:claude-haiku-4-5
-    because the OpenAI key on file (OPENAI_API_KEY in .env) had exhausted its quota
-    (HTTP 429 insufficient_quota on first attempt).
-  - All 3 fields (prompt, chosen, rejected) present and chosen != rejected confirmed.
-  - min-gap threshold of 0.1 was sufficient; no retry needed.
+  - Wall clock: ~22 minutes
+  - Tier 1 OpenAI quota active (rate-limit retries fired ~6 times during the run, all caught by tenacity layer)
+  - Hybrid provider config keeps gpt-4o-mini debater outputs (the model we'll fine-tune) while routing the
+    larger 30-call rubric scoring burst to Anthropic (different TPM bucket).
+  - Replaces an earlier 31-pair haiku-only run from before Tier 1 activation.

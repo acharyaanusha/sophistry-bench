@@ -23,8 +23,8 @@ Provider = Literal["openai", "anthropic", "google"]
 
 
 _RETRY_KWARGS = dict(
-    wait=wait_random_exponential(min=2, max=90),
-    stop=stop_after_attempt(8),
+    wait=wait_random_exponential(min=5, max=120),
+    stop=stop_after_attempt(15),
     retry=retry_if_exception_type(Exception),
     reraise=True,
     before_sleep=before_sleep_log(logger, logging.WARNING),

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from dataclasses import dataclass
 from typing import Literal, Protocol
@@ -10,10 +11,13 @@ from openai import AsyncOpenAI
 from tenacity import (
     AsyncRetrying,
     RetryError,
+    before_sleep_log,
     retry_if_exception_type,
     stop_after_attempt,
     wait_random_exponential,
 )
+
+logger = logging.getLogger(__name__)
 
 Provider = Literal["openai", "anthropic", "google"]
 
@@ -23,6 +27,7 @@ _RETRY_KWARGS = dict(
     stop=stop_after_attempt(8),
     retry=retry_if_exception_type(Exception),
     reraise=True,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
 )
 
 # Global semaphore controlling max concurrent in-flight OpenAI API calls.

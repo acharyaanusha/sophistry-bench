@@ -1,14 +1,22 @@
 import argparse
 import asyncio
 import json
+import logging
 from pathlib import Path
 
-from sophistry_bench.agents import LLMClient
-from sophistry_bench.dataset import build_debate_tasks, load_quality_from_json, pick_distractor, stable_hash
-from sophistry_bench.environment import DebateEnv
-from sophistry_bench.eval import evaluate_model
-from sophistry_bench.rubric import JudgePool, SophistryRubric
-from sophistry_bench.train import build_dpo_pairs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+from sophistry_bench.agents import LLMClient  # noqa: E402
+from sophistry_bench.dataset import (  # noqa: E402
+    build_debate_tasks, load_quality_from_json, pick_distractor, stable_hash,
+)
+from sophistry_bench.environment import DebateEnv  # noqa: E402
+from sophistry_bench.eval import evaluate_model  # noqa: E402
+from sophistry_bench.rubric import JudgePool, SophistryRubric  # noqa: E402
+from sophistry_bench.train import build_dpo_pairs  # noqa: E402
 
 
 async def _run(args: argparse.Namespace) -> None:

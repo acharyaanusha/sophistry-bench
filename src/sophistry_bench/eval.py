@@ -28,11 +28,17 @@ async def evaluate_model(
         return EvalResult(n=0, mean_subscores={}, trajectories=[], per_task_scores=[])
 
     sem = asyncio.Semaphore(concurrency)
+    completed = [0]
+    total = len(tasks)
+    print(f"[eval] starting {total} tasks at concurrency={concurrency}", flush=True)
 
     async def _one(task):
         async with sem:
             traj = await env.rollout(task)
             scores = await rubric.score(traj)
+            completed[0] += 1
+            if completed[0] % 5 == 0 or completed[0] == total:
+                print(f"[eval] {completed[0]}/{total} tasks complete", flush=True)
             return traj, scores
 
     pairs = await asyncio.gather(*(_one(t) for t in tasks))

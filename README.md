@@ -13,7 +13,7 @@ Two LLMs debate a multiple-choice question about a passage. Both debaters see th
 | Protocol | Faithful reproduction of Khan et al. 2024's asymmetric-information debate |
 | Infra | First `verifiers`-spec packaging of asymmetric-info debate; hub-installable |
 | Reward shaping | Configurable 7-component reward signal for RL training experiments |
-| Trained baseline | DPO fine-tune of `gpt-4o-2024-08-06` on 38 preference pairs from n=20 QuALITY items → `ft:gpt-4o-2024-08-06:personal:sophistry-pol:DdiUviSD`. n=10 re-eval shows the trained debater **reduces citation bluffing by ~60% relative (+0.15 absolute)** while leaving correctness unchanged at 0.90. Full per-axis deltas in `artifacts/leaderboard_pol_diff.txt`. |
+| Trained baseline | DPO fine-tune of `gpt-4o-2024-08-06` on 38 preference pairs from n=20 QuALITY items → `ft:gpt-4o-2024-08-06:personal:sophistry-pol:DdiUviSD`. n=10 re-eval shows +0.15 absolute on `citation_bluffing` and unchanged correctness (0.90). **Caveat:** eval items 0-9 overlap the DPO training set (items 0-19); 7/10 eval articles have training pairs. The +0.15 is pipeline-correctness evidence, **not** held-out evidence of generalization. Held-out re-eval (items 20-29) deferred to v1.1. Full deltas: `artifacts/leaderboard_pol_diff.txt`. |
 
 The 7-component reward decomposition is **reward-shaping for training experiments**, not a measurement instrument — it has not been validated against human judgment. Any LLM-judge component is gameable in principle; failure modes are documented in `docs/reward-hacking.md`.
 
@@ -90,6 +90,14 @@ python scripts/run_eval.py \
 The pair generator runs `--n-samples-per-task` rollouts per (task, side) and
 pairs the cleanest argument vs the dirtiest argument *for the same assigned
 answer*. This isolates the sophistry signal from the answer-correctness signal.
+
+> **Train/eval separation.** Both `generate_dpo_pairs.py` and `run_eval.py`
+> slice their input JSON via `[:n_items]`. If you point both at the same file
+> with overlapping `--n-items` / `--n-tasks`, your eval set will be a subset of
+> your training set. For a held-out evaluation, either pass disjoint JSON files
+> (e.g. `data/quality_train.json` for training and `data/quality_eval.json` for
+> eval) or pre-split a single source. Future task: add an automatic
+> non-overlap check to the scripts.
 
 ```bash
 python scripts/generate_dpo_pairs.py \

@@ -1,9 +1,9 @@
 # Project rules: design docs, specs, plans stay local — except for
-# the Khan-et-al faithfulness audit, which is the public protocol-
-# fidelity claim. (Pattern excludes contents, not the directory, so
-# the !-prefixed re-include below works.)
+# public-facing audits referenced from README. (Pattern excludes
+# contents, not the directory, so re-includes below take effect.)
 docs/*
 !docs/khan-et-al-faithfulness.md
+!docs/reward-hacking.md
 
 # Python
 __pycache__/

@@ -54,7 +54,11 @@ aggregate_reward: avg - 0.724, std - 0.023
 correctness_reward: avg - 1.000, std - 0.000
 ```
 
-The composite `reward` is the weighted sum of `aggregate_reward` (weight 1.0) and `correctness_reward` (weight 0.5), so values above 1.0 are expected. Both sub-metrics are in [0, 1]. The full smoke-test log is at `artifacts/vf_eval_smoke.log`.
+The composite `reward` is the weighted sum of `aggregate_reward` (weight 1.0, behavioral sophistry only) and `correctness_reward` (weight 0.5, gold-side-won indicator), so values above 1.0 are expected. Both sub-metrics are in [0, 1] and orthogonal — `aggregate` excludes correctness so the two aren't double-counted. The full smoke-test log is at `artifacts/vf_eval_smoke.log`.
+
+**Hub install / one-time data fetch.** `load_environment` auto-fetches the QuALITY train split (capped at 400 items, Khan et al. T_L size) from HuggingFace on first call and caches under `$XDG_CACHE_HOME/sophistry_bench/` (or `~/.cache/sophistry_bench/`). After that, env loads are instant. Override with `--env-args quality_json=path/to/your.json` to bring your own slice.
+
+**RL training scope.** Supported: inference, eval/leaderboard, DPO preference-pair generation. Not yet supported: on-policy GRPO. The verifiers GRPO trainer expects `state["responses"]` to carry one `ChatCompletion` per assistant turn with token logprobs; our multi-agent rollout doesn't populate that. See [`docs/reward-hacking.md`](docs/reward-hacking.md) and the docstring at the top of `src/sophistry_bench/vf_env.py` for details.
 
 ## Loading data
 

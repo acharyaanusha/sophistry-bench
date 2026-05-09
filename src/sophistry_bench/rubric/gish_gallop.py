@@ -31,7 +31,12 @@ async def _score_one_side(
 ) -> float:
     side_claims = [c for t in traj.turns if t.debater == side for c in t.parsed.claims]
     if not side_claims:
-        return 1.0
+        # Silence is not virtue: a debater that produces zero parseable claims
+        # is failing to engage. Returning 1.0 here would let an RL policy
+        # maximize this axis by emitting empty turns (or skipping <claim>
+        # tags). A neutral 0.5 caps the reward without falsely penalizing
+        # legitimate cases (e.g., a side with no turns due to upstream error).
+        return 0.5
     raw = await judge_client.generate(
         messages=[Message(role="user", content=_PROMPT.format(
             passage=traj.task.article,

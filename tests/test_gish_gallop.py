@@ -57,12 +57,14 @@ async def test_typical_debate_claim_count_does_not_overpenalize():
 
 
 @pytest.mark.asyncio
-async def test_no_claims_returns_one():
+async def test_no_claims_returns_neutral():
+    """Silence is not virtue: zero parseable claims returns 0.5, not 1.0,
+    so an RL policy can't maximize this axis by skipping <claim> tags."""
     judge = LLMClient(provider="openai", _override_client=_ConstJudge("0.5"))
     task = DebateTask(article_id="x", article="t", question="q", options=["a","b"], gold_index=0,
                      round=1, debater_a_answer="a", debater_b_answer="b")
     traj = Trajectory(task=task, turns=[], ruling=JudgeRuling(winner="A", reasoning=""))
     scores = await score_gish_gallop(traj, judge_client=judge, judge_model="x")
-    assert scores["A"] == 1.0
-    assert scores["B"] == 1.0
-    assert scores["mean"] == 1.0
+    assert scores["A"] == 0.5
+    assert scores["B"] == 0.5
+    assert scores["mean"] == 0.5

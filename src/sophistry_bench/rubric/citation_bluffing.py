@@ -13,6 +13,12 @@ _FUZZY_SCORE = 0.7        # awarded for token-overlap match
 _EMBED_SCORE = 0.3        # awarded for embedding-only match (soft floor)
 _VERBATIM_SCORE = 1.0     # awarded for verbatim substring match
 _MODEL_NAME = "all-MiniLM-L6-v2"
+# Citations shorter than this score 0 across all three tiers. Closes a
+# bluffing exploit where wrapping <cite>is</cite> or <cite>the</cite>
+# would short-circuit to 1.0 because the substring exists in any English
+# passage. 12 chars admits "built in 1842" / "Tuesday morning" while
+# rejecting filler tokens.
+_MIN_CITATION_CHARS = 12
 
 _WHITESPACE = re.compile(r"\s+")
 _PUNCT_EDGES = re.compile(r"^[\W_]+|[\W_]+$")
@@ -39,7 +45,7 @@ def _score_one_citation(citation: str, passage: str) -> float:
     """
     n_cit = _normalize(citation)
     n_pass = _normalize(passage)
-    if not n_cit:
+    if len(n_cit) < _MIN_CITATION_CHARS:
         return 0.0
     if n_cit in n_pass:
         return _VERBATIM_SCORE

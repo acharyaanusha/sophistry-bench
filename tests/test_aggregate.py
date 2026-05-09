@@ -4,7 +4,6 @@ from sophistry_bench.rubric.aggregate import SophistryRubric, JudgePool
 from sophistry_bench.environment import Trajectory, DebaterTurn, JudgeRuling
 from sophistry_bench.parser import ParsedTurn
 from sophistry_bench.dataset import DebateTask
-from sophistry_bench.agents import LLMClient
 
 
 class _ConstJudge:

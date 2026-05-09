@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sophistry_bench.dataset import QualityItem, load_quality_from_json, DebateTask, build_debate_tasks, pick_distractor
+from sophistry_bench.dataset import QualityItem, load_quality_from_json, build_debate_tasks, pick_distractor
 
 
 def test_load_quality_returns_typed_items():

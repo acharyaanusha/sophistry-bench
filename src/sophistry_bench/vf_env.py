@@ -56,11 +56,14 @@ standard verifiers signature.
 from __future__ import annotations
 
 import json
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 import verifiers as vf
 from datasets import Dataset
 from openai import AsyncOpenAI
+
+from sophistry_bench.agents import Provider
 
 from sophistry_bench.agents import LLMClient
 from sophistry_bench.dataset import (
@@ -329,7 +332,7 @@ def load_environment(
         A ``SophistryDebateEnv`` instance, which is a ``vf.Environment``
         subclass ready for use with the Prime Intellect Hub training loop.
     """
-    items = load_quality_from_json(quality_json)
+    items = load_quality_from_json(Path(quality_json))
     dataset = _quality_to_hf_dataset(items, seed=seed)
     # Default weights: aggregate (composite reward signal) gets 2x correctness
     # (binary indicator of gold-side win). Tweak per training experiment.
@@ -337,13 +340,15 @@ def load_environment(
 
     d_provider, d_model = debater.split(":", 1)
     j_provider, j_model = judge.split(":", 1)
+    d_provider_t = cast(Provider, d_provider)
+    j_provider_t = cast(Provider, j_provider)
 
     debate_env = DebateEnv(
-        debater_a_client=LLMClient(provider=d_provider),
+        debater_a_client=LLMClient(provider=d_provider_t),
         debater_a_model=d_model,
-        debater_b_client=LLMClient(provider=d_provider),
+        debater_b_client=LLMClient(provider=d_provider_t),
         debater_b_model=d_model,
-        judge_client=LLMClient(provider=j_provider),
+        judge_client=LLMClient(provider=j_provider_t),
         judge_model=j_model,
         turns_per_debater=turns_per_debater,
     )

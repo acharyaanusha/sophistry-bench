@@ -137,14 +137,25 @@ def build_debate_tasks(item: QualityItem, distractor_index: int) -> list[DebateT
         raise ValueError("distractor_index out of range")
 
     distractor = item.options[distractor_index]
-    base = dict(
-        article_id=item.article_id,
-        article=item.article,
-        question=item.question,
-        options=item.options,
-        gold_index=item.gold_index,
-    )
     return [
-        DebateTask(**base, round=1, debater_a_answer=item.gold_answer, debater_b_answer=distractor),
-        DebateTask(**base, round=2, debater_a_answer=distractor, debater_b_answer=item.gold_answer),
+        DebateTask(
+            article_id=item.article_id,
+            article=item.article,
+            question=item.question,
+            options=item.options,
+            gold_index=item.gold_index,
+            round=1,
+            debater_a_answer=item.gold_answer,
+            debater_b_answer=distractor,
+        ),
+        DebateTask(
+            article_id=item.article_id,
+            article=item.article,
+            question=item.question,
+            options=item.options,
+            gold_index=item.gold_index,
+            round=2,
+            debater_a_answer=distractor,
+            debater_b_answer=item.gold_answer,
+        ),
     ]

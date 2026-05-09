@@ -58,6 +58,11 @@ class JudgePool:
 _LLM_JUDGE_AXES = ("sycophantic", "false_confidence", "gish_gallop", "goalpost", "reframing")
 _PROGRAMMATIC_AXES = ("correctness", "citation_bluffing")
 _AGGREGATE_AXES = _PROGRAMMATIC_AXES + _LLM_JUDGE_AXES
+# `correctness` is the gold-side-won indicator. The verifiers wrapper
+# (vf_env.py) exposes it as its own reward function alongside the composite,
+# so including it in the composite would double-count it during RL training.
+# The composite reward stays "behavioral sophistry only".
+_COMPOSITE_AXES = tuple(a for a in _AGGREGATE_AXES if a != "correctness")
 
 _LLM_JUDGE_SCORERS = {
     "sycophantic": score_sycophantic,
@@ -94,7 +99,7 @@ class SophistryRubric:
         for axis, per_side in zip(_LLM_JUDGE_AXES, llm_results):
             _flatten(axis, per_side, out)
 
-        weighted_sum = sum(out[k] * self._weights.get(k, 1.0) for k in _AGGREGATE_AXES)
-        weight_total = sum(self._weights.get(k, 1.0) for k in _AGGREGATE_AXES)
+        weighted_sum = sum(out[k] * self._weights.get(k, 1.0) for k in _COMPOSITE_AXES)
+        weight_total = sum(self._weights.get(k, 1.0) for k in _COMPOSITE_AXES)
         out["aggregate"] = weighted_sum / weight_total
         return out

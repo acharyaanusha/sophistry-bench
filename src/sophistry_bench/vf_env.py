@@ -56,6 +56,8 @@ standard verifiers signature.
 from __future__ import annotations
 
 import json
+import logging
+import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -69,12 +71,26 @@ from sophistry_bench.agents import LLMClient
 from sophistry_bench.dataset import (
     DebateTask,
     build_debate_tasks,
+    load_quality_from_hub,
     load_quality_from_json,
     pick_distractor,
     stable_hash,
 )
 from sophistry_bench.environment import DebateEnv, Trajectory
 from sophistry_bench.rubric import JudgePool, SophistryRubric
+
+logger = logging.getLogger(__name__)
+
+
+def _default_cache_path() -> Path:
+    """User-cache dir for the auto-fetched QuALITY snapshot.
+
+    Honors XDG_CACHE_HOME; falls back to ~/.cache. The 400-item cap matches
+    Khan et al.'s T_L sample size (their hard-subset filter is unimplemented,
+    documented in docs/khan-et-al-faithfulness.md).
+    """
+    base = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
+    return base / "sophistry_bench" / "quality_train_400.json"
 
 # ---------------------------------------------------------------------------
 # Dataset helpers
@@ -298,7 +314,8 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
 
 def load_environment(
     *,
-    quality_json: str = "data/quality_dev.json",
+    quality_json: str | None = None,
+    n_items: int = 400,
     debater: str = "anthropic:claude-sonnet-4-6",
     judge: str = "anthropic:claude-haiku-4-5",
     judge_pool_size: int = 3,
@@ -313,26 +330,41 @@ def load_environment(
     imports our package and looks for a ``load_environment`` symbol.
 
     Args:
-        quality_json: Path to the QuALITY JSON file.  Defaults to
-            ``data/quality_dev.json`` relative to the current working
-            directory.
+        quality_json: Path to a QuALITY JSON file. ``None`` (default) auto-
+            fetches the QuALITY train split from HuggingFace
+            (``emozilla/quality``) on first call and caches it under
+            ``$XDG_CACHE_HOME/sophistry_bench/`` so subsequent loads are
+            instant. Pass an explicit path to use a custom slice.
+        n_items: Cap on QuALITY items when auto-fetching. Defaults to 400 to
+            match Khan et al. T_L sample size; ignored when ``quality_json``
+            is provided.
         debater: Provider:model string for both debaters.  Defaults to
             ``anthropic:claude-sonnet-4-6``.
         judge: Provider:model string for the judge.  Defaults to
-            ``anthropic:claude-haiku-4-5``.
+            ``anthropic:claude-haiku-4-5`` (weaker than debater per Khan et al.).
         judge_pool_size: Number of judges in the ``JudgePool``.  More judges
             reduce variance but increase cost.
         turns_per_debater: Number of argument rounds each debater gets.
         seed: Random seed for deterministic distractor selection.
         reward_weights: Two-element list ``[aggregate_weight, correctness_weight]``
-            passed to ``vf.Rubric``.  Defaults to ``[1.0, 0.5]``.  Override to
-            rebalance the composite signal during training experiments.
+            passed to ``vf.Rubric``. Defaults to ``[1.0, 0.5]``. With
+            ``aggregate`` now excluding ``correctness`` (see
+            ``rubric/aggregate.py``), the two signals are orthogonal.
 
     Returns:
         A ``SophistryDebateEnv`` instance, which is a ``vf.Environment``
         subclass ready for use with the Prime Intellect Hub training loop.
     """
-    items = load_quality_from_json(Path(quality_json))
+    if quality_json is None:
+        cache = _default_cache_path()
+        if not cache.exists():
+            logger.info("Fetching QuALITY train split → %s (one-time)", cache)
+            load_quality_from_hub(
+                split="train", limit=n_items, cache_path=cache, seed=seed,
+            )
+        items = load_quality_from_json(cache)
+    else:
+        items = load_quality_from_json(Path(quality_json))
     dataset = _quality_to_hf_dataset(items, seed=seed)
     # Default weights: aggregate (composite reward signal) gets 2x correctness
     # (binary indicator of gold-side win). Tweak per training experiment.

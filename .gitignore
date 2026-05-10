@@ -44,3 +44,4 @@ wandb/
 
 # DPO pair files (large, gitignored; see artifacts/*.summary.txt for audit trail)
 dpo_pairs*.jsonl
+.prime/

@@ -36,12 +36,17 @@ async def _score_one_side(
         return 1.0
     assigned = traj.task.debater_a_answer if side == "A" else traj.task.debater_b_answer
     raw = await judge_client.generate(
-        messages=[Message(role="user", content=_PROMPT.format(
-            question=traj.task.question,
-            assigned=assigned,
-            first=side_turns[0].text,
-            last=side_turns[-1].text,
-        ))],
+        messages=[
+            Message(
+                role="user",
+                content=_PROMPT.format(
+                    question=traj.task.question,
+                    assigned=assigned,
+                    first=side_turns[0].text,
+                    last=side_turns[-1].text,
+                ),
+            )
+        ],
         model=judge_model,
         temperature=_JUDGE_TEMPERATURE,
     )

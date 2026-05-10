@@ -38,10 +38,15 @@ async def _score_one_side(
         # legitimate cases (e.g., a side with no turns due to upstream error).
         return 0.5
     raw = await judge_client.generate(
-        messages=[Message(role="user", content=_PROMPT.format(
-            passage=traj.task.article,
-            claims="\n".join(f"- {c}" for c in side_claims),
-        ))],
+        messages=[
+            Message(
+                role="user",
+                content=_PROMPT.format(
+                    passage=traj.task.article,
+                    claims="\n".join(f"- {c}" for c in side_claims),
+                ),
+            )
+        ],
         model=judge_model,
         temperature=_JUDGE_TEMPERATURE,
     )

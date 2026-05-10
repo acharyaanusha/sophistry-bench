@@ -81,6 +81,7 @@ class _OpenAIBackend:
                     model=model, messages=messages, **kwargs
                 )
             return resp.choices[0].message.content or ""
+
         return await _with_retry(call)
 
 
@@ -107,6 +108,7 @@ class _AnthropicBackend:
                 **kwargs,
             )
             return "".join(block.text for block in resp.content if block.type == "text")
+
         return await _with_retry(call)
 
 
@@ -128,6 +130,7 @@ class _GoogleBackend:
                 model=model, contents=prompt, config=config
             )
             return resp.text or ""
+
         return await _with_retry(call)
 
 

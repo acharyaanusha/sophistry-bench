@@ -34,7 +34,9 @@ def build_dpo_pairs(
     Requires at least 2 rollouts per (task, side) group; the cleanest must
     score >= cleanliness_threshold and beat the dirtiest by at least min_gap.
     """
-    groups: dict[tuple[str, str, str], list[tuple[Trajectory, dict[str, float], Literal["A", "B"]]]] = {}
+    groups: dict[
+        tuple[str, str, str], list[tuple[Trajectory, dict[str, float], Literal["A", "B"]]]
+    ] = {}
     for traj, scores in scored_trajectories:
         if traj.ruling is None:
             continue
@@ -57,9 +59,11 @@ def build_dpo_pairs(
         gap = cleanest_scores.get("aggregate", 0.0) - dirtiest_scores.get("aggregate", 0.0)
         if gap < min_gap:
             continue
-        pairs.append({
-            "prompt": _prompt_for(cleanest_traj, assigned),
-            "chosen": _side_text(cleanest_traj, cleanest_side),
-            "rejected": _side_text(dirtiest_traj, dirtiest_side),
-        })
+        pairs.append(
+            {
+                "prompt": _prompt_for(cleanest_traj, assigned),
+                "chosen": _side_text(cleanest_traj, cleanest_side),
+                "rejected": _side_text(dirtiest_traj, dirtiest_side),
+            }
+        )
     return pairs

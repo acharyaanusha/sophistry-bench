@@ -63,11 +63,8 @@ from typing import Any, cast
 
 import verifiers as vf
 from datasets import Dataset
-from openai import AsyncOpenAI
 
-from sophistry_bench.agents import Provider
-
-from sophistry_bench.agents import LLMClient
+from sophistry_bench.agents import LLMClient, Provider
 from sophistry_bench.dataset import (
     DebateTask,
     build_debate_tasks,
@@ -118,9 +115,11 @@ def _quality_to_hf_dataset(items, *, seed: int = 0) -> Dataset:
                 "prompt": prompt_msg,
                 "answer": task.gold_answer,
                 # Store the full task in info so rollout can reconstruct it.
-                # verifiers' a_generate serialises the info column as JSON if
-                # it detects strings; we pre-dump to avoid double-encoding.
-                "info": json.dumps(task_dict),
+                # Pass as a dict (not JSON string) for verifiers >=0.1.10,
+                # which drops string-typed info columns to {} on dataset
+                # round-trip. Older versions (<=0.1.5) accept either form;
+                # rollout()'s isinstance(info, str) handles both at decode.
+                "info": task_dict,
             })
     return Dataset.from_list(rows)
 
@@ -148,14 +147,11 @@ def _build_reward_funcs(rubric: SophistryRubric) -> list[vf.RewardFunc]:
         state: vf.State,
         **_: Any,
     ) -> float:
-        traj: Trajectory | None = state.get("trajectory")
-        if traj is None:
-            return 0.0
-        # Cache scores to avoid duplicate LLM judge calls when both reward
-        # functions are evaluated for the same rollout.
-        if "_rubric_scores" not in state:
-            state["_rubric_scores"] = await rubric.score(traj)
-        return float(state["_rubric_scores"]["aggregate"])
+        # Scores are pre-computed inside rollout() to avoid putting the
+        # non-serialisable Trajectory dataclass into state (verifiers >=0.1.10
+        # ships state across a ZMQ worker boundary).
+        scores = state.get("_rubric_scores") or {}
+        return float(scores.get("aggregate", 0.0))
 
     async def correctness_reward(
         prompt: vf.Messages,
@@ -164,12 +160,8 @@ def _build_reward_funcs(rubric: SophistryRubric) -> list[vf.RewardFunc]:
         state: vf.State,
         **_: Any,
     ) -> float:
-        traj: Trajectory | None = state.get("trajectory")
-        if traj is None:
-            return 0.0
-        if "_rubric_scores" not in state:
-            state["_rubric_scores"] = await rubric.score(traj)
-        return float(state["_rubric_scores"]["correctness"])
+        scores = state.get("_rubric_scores") or {}
+        return float(scores.get("correctness", 0.0))
 
     return [aggregate_reward, correctness_reward]
 
@@ -208,6 +200,7 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
             **kwargs,
         )
         self._debate_env = debate_env
+        self._rubric_obj = rubric_obj
 
     # ------------------------------------------------------------------
     # Required abstract method (never called — our rollout() is self-contained)
@@ -232,47 +225,52 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
 
     async def rollout(
         self,
-        client: AsyncOpenAI,
-        model: str,
-        prompt: vf.Messages,
-        answer: str = "",
-        task: str = "default",
-        info: vf.Info | None = None,
-        sampling_args: vf.SamplingArgs | None = None,
+        *args: Any,
         **kwargs: Any,
-    ) -> tuple[vf.Messages, vf.State]:
-        """Run a full debate rollout and return (completion, state).
+    ) -> Any:
+        """Run a full debate rollout and return a verifiers ``State`` dict.
 
-        Args:
-            client: AsyncOpenAI client provided by the training harness.
-                    Accepted but not used — ``DebateEnv`` manages its own
-                    provider clients.
-            model: Model identifier provided by the harness; not used.
-            prompt: Chat messages from the dataset row (the debate question).
-            answer: Gold answer string from the dataset ``answer`` column.
-            task: Task identifier string (passed through to state).
-            info: Per-row metadata dict; must contain the serialised
-                  ``DebateTask`` JSON written by ``_quality_to_hf_dataset``.
-            sampling_args: Ignored.
+        Compatible with both:
+        - verifiers >=0.1.10: ``rollout(input, client, model, sampling_args)``
+          where ``input`` is a ``RolloutInput`` TypedDict with ``prompt``,
+          ``answer``, ``task``, ``info``, ``example_id``.
+        - verifiers <=0.1.5: ``rollout(client, model, prompt, answer, task,
+          info, sampling_args)``.
 
-        Returns:
-            A ``(completion, state)`` tuple where:
-            - ``completion`` is a list of ChatMessage dicts representing the
-              debate transcript (alternating debater turns).
-            - ``state`` is a verifiers State dict with ``trajectory``,
-              ``answer``, ``task``, and standard verifiers bookkeeping fields.
+        The framework's ``client``/``model`` are accepted but unused —
+        ``DebateEnv`` manages its own provider clients. ``info`` carries the
+        full serialised ``DebateTask`` written by ``_quality_to_hf_dataset``.
         """
-        info = info or {}
+        # Detect calling convention.
+        if args and isinstance(args[0], dict) and "prompt" in args[0]:
+            # New (>=0.1.10) signature: first positional is RolloutInput dict
+            input_obj = args[0]
+            prompt = input_obj.get("prompt", [])
+            answer = input_obj.get("answer", "")
+            task = input_obj.get("task", "default")
+            info = input_obj.get("info") or {}
+            example_id = input_obj.get("example_id", 0)
+        else:
+            # Legacy signature: rollout(client, model, prompt, answer, task, info, ...)
+            prompt = args[2] if len(args) > 2 else kwargs.get("prompt", [])
+            answer = args[3] if len(args) > 3 else kwargs.get("answer", "")
+            task = args[4] if len(args) > 4 else kwargs.get("task", "default")
+            info = (args[5] if len(args) > 5 else kwargs.get("info")) or {}
+            example_id = 0
 
         # Reconstruct the DebateTask from the info column.
         if isinstance(info, str):
             info = json.loads(info)
-        task_data = info
 
-        debate_task = DebateTask(**task_data)
+        debate_task = DebateTask(**info)
 
         # Run the internal multi-agent debate.
         traj: Trajectory = await self._debate_env.rollout(debate_task)
+
+        # Score immediately so we don't have to put the non-serialisable
+        # Trajectory dataclass into state (verifiers >=0.1.10 ships state
+        # across a ZMQ worker boundary).
+        scores = await self._rubric_obj.score(traj)
 
         # Format debate turns as ChatMessage dicts for the completion field.
         completion_messages: list[dict] = []
@@ -287,18 +285,23 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
                 "content": f"[Judge verdict: {traj.ruling.winner}] {traj.ruling.reasoning}",
             })
 
-        # Build the state dict.  The verifiers framework expects at minimum the
-        # keys populated here; reward functions will add "_rubric_scores".
+        # Build the state dict. Reward functions read state["_rubric_scores"].
+        # All values must be JSON-serialisable for the ZMQ worker boundary
+        # in verifiers >=0.1.10. The framework expects state["trajectory"] to
+        # be a list of turn dicts (its own format) — we don't use the
+        # framework's turn loop so it stays empty; our own multi-agent
+        # trajectory is consumed inside rollout() and never stored.
         state: vf.State = {
-            "id": 0,
+            "id": example_id,
             "prompt": prompt,
             "completion": completion_messages,
             "answer": answer,
             "task": task,
             "info": info,
             "responses": [],
+            "trajectory": [],
             "turn": len(traj.turns),
-            "trajectory": traj,
+            "_rubric_scores": {k: float(v) for k, v in scores.items()},
             "timing": {
                 "generation_ms": 0.0,
                 "scoring_ms": 0.0,
@@ -306,7 +309,7 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
             },
         }
 
-        return completion_messages, state
+        return state
 
 
 # ---------------------------------------------------------------------------

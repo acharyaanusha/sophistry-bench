@@ -1,12 +1,13 @@
 [project]
 name = "sophistry-bench"
-version = "0.1.1"
+version = "0.1.2"
 description = "RL environment for asymmetric-info debate with sophistry-decomposed verifier"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "Anusha Acharya", email = "acharyaanusha123@gmail.com" }]
 keywords = ["debate", "multi-agent", "rubric", "rl-environment", "verifiers", "QuALITY"]
+tags = ["debate", "rl", "verifiers", "scalable-oversight", "QuALITY", "khan-2024", "eval", "train"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",

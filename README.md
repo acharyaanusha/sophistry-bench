@@ -19,32 +19,33 @@ The 7-component reward decomposition is **reward-shaping for training experiment
 
 ## Quickstart
 
-Install from the Hub and run with default settings (Anthropic debaters + Haiku judge):
+Install from the Hub, then run locally with your own API keys (Anthropic debaters + Haiku judge by default):
 
 ```bash
 prime env install anusha/sophistry-bench
 export ANTHROPIC_API_KEY=...
-prime eval run sophistry_bench
+vf-eval sophistry_bench -n 5 -r 3
 ```
 
-Configure model and sampling (5 items × 3 rollouts, lower-temp judge):
+Configure model and sampling:
 
 ```bash
-prime eval run sophistry_bench -m claude-haiku-4-5 -n 5 -r 3 -T 0.0
+vf-eval sophistry_bench -n 5 -r 3 -m claude-haiku-4-5 -T 0.0
 ```
 
 Swap debaters or judge via env-args (`provider:model` strings):
 
 ```bash
-prime eval run sophistry_bench \
-  -a '{"debater": "openai:gpt-4o", "judge": "anthropic:claude-haiku-4-5"}'
+vf-eval sophistry_bench -a '{"debater": "openai:gpt-4o", "judge": "anthropic:claude-haiku-4-5"}'
 ```
 
 Bring your own QuALITY slice (defaults auto-fetch from HuggingFace, fall back to bundled 50-item dev split):
 
 ```bash
-prime eval run sophistry_bench -a '{"quality_json": "path/to/your.json"}'
+vf-eval sophistry_bench -a '{"quality_json": "path/to/your.json"}'
 ```
+
+> `prime eval run sophistry_bench` also works but routes through Prime's hosted-eval compute (requires Prime balance). Use `vf-eval` for self-hosted runs against your own provider accounts.
 
 For local development from this repo:
 

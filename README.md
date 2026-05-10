@@ -35,7 +35,7 @@ python scripts/demo.py                                            # one-off deba
 vf-eval sophistry_bench --num-examples 2 --rollouts-per-example 1 # verifiers-spec smoke
 ```
 
-`load_environment` auto-fetches the QuALITY train split (capped at 400 items, Khan et al.'s T_L size) on first call and caches under `$XDG_CACHE_HOME/sophistry_bench/`. Override with `--env-args quality_json=path/to/your.json` to bring your own slice.
+`load_environment` auto-fetches the QuALITY train split (capped at 400 items, Khan et al.'s T_L size) on first call and caches under `$XDG_CACHE_HOME/sophistry_bench/`. If the Hub is unreachable it falls back to the bundled 50-item dev split (smoke-test only). Override with `--env-args quality_json=path/to/your.json` to bring your own slice.
 
 **Scope.** Inference, eval/leaderboard, and DPO preference-pair generation are supported. On-policy GRPO is not — multi-agent rollouts don't populate per-turn `ChatCompletion`s with logprobs.
 
@@ -43,12 +43,13 @@ vf-eval sophistry_bench --num-examples 2 --rollouts-per-example 1 # verifiers-sp
 
 ```bash
 python scripts/run_eval.py \
-  --quality-json data/quality_dev.json \
   --debaters openai:gpt-4o anthropic:claude-haiku-4-5 \
   --judge anthropic:claude-haiku-4-5 \
   --n-tasks 50 \
   --output leaderboard.json
 ```
+
+`--quality-json` defaults to the bundled 50-item dev split. Pass `--quality-json path/to/your.json` for a custom slice.
 
 ## DPO fine-tuning
 

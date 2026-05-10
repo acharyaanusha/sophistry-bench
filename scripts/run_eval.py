@@ -4,7 +4,13 @@ import json
 import os
 from pathlib import Path
 
-from sophistry_bench.dataset import build_debate_tasks, load_quality_from_json, pick_distractor, stable_hash
+from sophistry_bench.dataset import (
+    build_debate_tasks,
+    load_quality_from_json,
+    packaged_quality_path,
+    pick_distractor,
+    stable_hash,
+)
 from sophistry_bench.eval import run_leaderboard
 
 
@@ -21,7 +27,12 @@ def _load_env_file(path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--quality-json", type=Path, required=True)
+    parser.add_argument(
+        "--quality-json",
+        type=Path,
+        default=None,
+        help="Path to QuALITY JSON. Defaults to bundled 50-item dev split.",
+    )
     parser.add_argument("--output", type=Path, default=Path("leaderboard.json"))
     parser.add_argument("--debaters", nargs="+", required=True,
                         help="Specs as provider:model, e.g. openai:gpt-4o or anthropic:claude-sonnet-4-6. "
@@ -42,7 +53,8 @@ def main() -> None:
 
     _load_env_file(Path(__file__).parent.parent / ".env")
 
-    items = load_quality_from_json(args.quality_json)[: args.n_tasks]
+    quality_path = args.quality_json or packaged_quality_path()
+    items = load_quality_from_json(quality_path)[: args.n_tasks]
     tasks = []
     for item in items:
         distractor_idx = pick_distractor(item, seed=stable_hash(item.article_id))

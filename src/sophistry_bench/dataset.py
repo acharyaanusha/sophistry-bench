@@ -1,9 +1,24 @@
 import hashlib as _hashlib
 import json
+import logging
 import random as _random
+from importlib import resources
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationInfo, field_validator
+
+logger = logging.getLogger(__name__)
+
+
+def packaged_quality_path() -> Path:
+    """Return the absolute path to the bundled QuALITY dev split (50 items).
+
+    Shipped inside the wheel under ``sophistry_bench/data/quality_dev.json`` so
+    fresh installs have a working dataset without depending on HuggingFace Hub
+    reachability. Suitable for smoke tests and demos; full training/eval should
+    use the Hub-fetched train split (400 items).
+    """
+    return Path(str(resources.files("sophistry_bench") / "data" / "quality_dev.json"))
 
 
 def stable_hash(s: str) -> int:
@@ -109,8 +124,15 @@ def load_quality_from_hub(
             break
 
     if cache_path is not None:
-        Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(cache_path).write_text(json.dumps(raw_records, indent=2))
+        try:
+            Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(cache_path).write_text(json.dumps(raw_records, indent=2))
+        except OSError as e:
+            logger.warning(
+                "Could not write QuALITY cache to %s (%s). "
+                "Continuing without cache; subsequent loads will re-fetch from Hub.",
+                cache_path, e,
+            )
 
     return items
 

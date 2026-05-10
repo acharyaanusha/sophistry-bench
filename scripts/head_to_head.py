@@ -19,6 +19,7 @@ from sophistry_bench.agents import LLMClient
 from sophistry_bench.dataset import (
     build_debate_tasks,
     load_quality_from_json,
+    packaged_quality_path,
     pick_distractor,
     stable_hash,
 )
@@ -39,7 +40,11 @@ def _load_env_file(path: Path) -> None:
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--quality-json", default="data/quality_dev.json")
+    parser.add_argument(
+        "--quality-json",
+        default=None,
+        help="Path to QuALITY JSON. Defaults to bundled 50-item dev split.",
+    )
     parser.add_argument("--debater-a", required=True, help="provider:model — argues the GOLD answer")
     parser.add_argument("--debater-b", required=True, help="provider:model — argues a DISTRACTOR")
     parser.add_argument("--judge", default="anthropic:claude-haiku-4-5")
@@ -50,7 +55,8 @@ async def main():
 
     _load_env_file(Path(__file__).parent.parent / ".env")
 
-    items = load_quality_from_json(Path(args.quality_json))
+    quality_path = Path(args.quality_json) if args.quality_json else packaged_quality_path()
+    items = load_quality_from_json(quality_path)
     item = items[args.item_index]
     distractor_idx = pick_distractor(item, seed=stable_hash(item.article_id))
     task = build_debate_tasks(item, distractor_index=distractor_idx)[0]

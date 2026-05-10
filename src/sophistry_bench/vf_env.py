@@ -73,6 +73,7 @@ from sophistry_bench.dataset import (
     build_debate_tasks,
     load_quality_from_hub,
     load_quality_from_json,
+    packaged_quality_path,
     pick_distractor,
     stable_hash,
 )
@@ -357,12 +358,24 @@ def load_environment(
     """
     if quality_json is None:
         cache = _default_cache_path()
-        if not cache.exists():
-            logger.info("Fetching QuALITY train split → %s (one-time)", cache)
-            load_quality_from_hub(
-                split="train", limit=n_items, cache_path=cache, seed=seed,
-            )
-        items = load_quality_from_json(cache)
+        if cache.exists():
+            items = load_quality_from_json(cache)
+        else:
+            try:
+                logger.info("Fetching QuALITY train split → %s (one-time)", cache)
+                load_quality_from_hub(
+                    split="train", limit=n_items, cache_path=cache, seed=seed,
+                )
+                items = load_quality_from_json(cache)
+            except Exception as e:
+                fallback = packaged_quality_path()
+                logger.warning(
+                    "QuALITY Hub fetch failed (%s). Falling back to bundled "
+                    "dev split at %s (50 items, smoke-test only). Pass "
+                    "quality_json=<path> to use a custom slice.",
+                    e, fallback,
+                )
+                items = load_quality_from_json(fallback)
     else:
         items = load_quality_from_json(Path(quality_json))
     dataset = _quality_to_hf_dataset(items, seed=seed)

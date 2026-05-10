@@ -17,25 +17,42 @@ Two LLMs debate a multiple-choice question about a passage. Both debaters see th
 
 The 7-component reward decomposition is **reward-shaping for training experiments**, not a measurement instrument — it has not been validated against human judgment. Any LLM-judge component is gameable in principle; failure modes are documented in `docs/reward-hacking.md`.
 
-## Setup
+## Quickstart
+
+Install from the Hub and run with default settings (Anthropic debaters + Haiku judge):
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-export OPENAI_API_KEY=...
+prime env install anusha/sophistry-bench
 export ANTHROPIC_API_KEY=...
+prime eval run sophistry_bench
 ```
 
-## Run
+Configure model and sampling (5 items × 3 rollouts, lower-temp judge):
 
 ```bash
-python scripts/demo.py                                            # one-off debate + rubric
-vf-eval sophistry_bench --num-examples 2 --rollouts-per-example 1 # verifiers-spec smoke
+prime eval run sophistry_bench -m claude-haiku-4-5 -n 5 -r 3 -T 0.0
 ```
 
-`load_environment` auto-fetches the QuALITY train split (capped at 400 items, Khan et al.'s T_L size) on first call and caches under `$XDG_CACHE_HOME/sophistry_bench/`. If the Hub is unreachable it falls back to the bundled 50-item dev split (smoke-test only). Override with `--env-args quality_json=path/to/your.json` to bring your own slice.
+Swap debaters or judge via env-args (`provider:model` strings):
+
+```bash
+prime eval run sophistry_bench \
+  -a '{"debater": "openai:gpt-4o", "judge": "anthropic:claude-haiku-4-5"}'
+```
+
+Bring your own QuALITY slice (defaults auto-fetch from HuggingFace, fall back to bundled 50-item dev split):
+
+```bash
+prime eval run sophistry_bench -a '{"quality_json": "path/to/your.json"}'
+```
+
+For local development from this repo:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+vf-eval sophistry_bench --num-examples 2 --rollouts-per-example 1
+```
 
 **Scope.** Inference, eval/leaderboard, and DPO preference-pair generation are supported. On-policy GRPO is not — multi-agent rollouts don't populate per-turn `ChatCompletion`s with logprobs.
 

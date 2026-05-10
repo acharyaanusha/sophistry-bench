@@ -19,12 +19,31 @@ The 7-component reward decomposition is **reward-shaping for training experiment
 
 ## Quickstart
 
-Install from the Hub, then run locally with your own API keys (Anthropic debaters + Haiku judge by default):
+From inside the [`community-environments`](https://github.com/PrimeIntellect-ai/community-environments) project (`git clone` it, then `uv sync` to set up the venv):
+
+```bash
+export ANTHROPIC_API_KEY=...
+uv run vf-eval -s sophistry_bench
+```
+
+Configure model, examples, and rollouts:
+
+```bash
+uv run vf-eval -s sophistry_bench -m claude-haiku-4-5 -n 5 -r 3
+```
+
+Pass environment-specific arguments:
+
+```bash
+uv run vf-eval -s sophistry_bench \
+  -a '{"debater": "openai:gpt-4o", "judge": "anthropic:claude-haiku-4-5"}'
+```
+
+For hosted eval against Prime Intellect's compute (requires Prime balance):
 
 ```bash
 prime env install anusha/sophistry-bench
-export ANTHROPIC_API_KEY=...
-vf-eval sophistry_bench -n 5 -r 3
+prime eval run sophistry_bench
 ```
 
 Configure model and sampling:

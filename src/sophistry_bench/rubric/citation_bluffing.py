@@ -1,9 +1,8 @@
 import re
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from sophistry_bench.environment import Trajectory
 
@@ -26,7 +25,18 @@ _SENTENCE_END = re.compile(r"(?<![A-Z][a-z]\.)(?<=[.!?])\s+(?=[A-Z])")
 
 
 @lru_cache(maxsize=1)
-def _model() -> SentenceTransformer:
+def _model() -> Any:
+    """Return a SentenceTransformer if installed, else None.
+
+    sentence-transformers is an optional extra (`pip install sophistry-bench[embeddings]`)
+    used only by the score-0.3 embedding fallback tier of citation grounding.
+    Without it, the verbatim (1.0) and fuzzy-token-overlap (0.7) tiers still
+    work; cites that would have scored 0.3 instead score 0.0.
+    """
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError:
+        return None
     return SentenceTransformer(_MODEL_NAME)
 
 
@@ -57,11 +67,15 @@ def _score_one_citation(citation: str, passage: str) -> float:
     if overlap >= _FUZZY_THRESHOLD:
         return _FUZZY_SCORE
 
-    # Last resort: embedding similarity (capped at partial credit)
+    # Last resort: embedding similarity (capped at partial credit).
+    # Returns 0.0 if sentence-transformers isn't installed (optional extra).
+    model = _model()
+    if model is None:
+        return 0.0
     chunks = [c.strip() for c in _SENTENCE_END.split(passage) if c.strip()]
     if not chunks:
         return 0.0
-    embs = _model().encode([citation] + chunks, convert_to_numpy=True)
+    embs = model.encode([citation] + chunks, convert_to_numpy=True)
     cit_emb = embs[0]
     chunk_embs = embs[1:]
     sims = chunk_embs @ cit_emb / (

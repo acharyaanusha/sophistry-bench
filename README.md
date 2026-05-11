@@ -9,7 +9,8 @@
 
 ### Datasets
 - **Primary dataset**: [QuALITY](https://nyu-mll.github.io/quality/) (multi-choice reading comprehension over long passages)
-- **Source**: `emozilla/quality` on HuggingFace; bundled 50-item dev split as fallback when Hub fetch is unreachable
+- **Curated slice (this project)**: [`anushaacharya/sophistry-bench-quality-dev`](https://huggingface.co/datasets/anushaacharya/sophistry-bench-quality-dev) — 50-item dev split used as the eval distribution and offline fallback. CC-BY-4.0, attribution to Pang et al. 2022.
+- **Upstream source**: [`emozilla/quality`](https://huggingface.co/datasets/emozilla/quality) on HuggingFace; the bundled `src/sophistry_bench/data/quality_dev.json` is loaded as fallback when the Hub is unreachable.
 - **Size**: Default cap of 400 items (matches Khan et al.'s `T_L`); each item produces 2 debate tasks (gold-A/distractor-B and the reverse)
 
 ### Task

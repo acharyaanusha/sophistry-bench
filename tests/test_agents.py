@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from sophistry_bench.agents import LLMClient, Message
 from tests.fixtures.mock_clients import MockOpenAIClient, MockAnthropicClient, MockGoogleClient
@@ -53,7 +55,7 @@ async def test_anthropic_backend_routes_system_message():
     mock_sdk.messages.create = AsyncMock(return_value=mock_response)
 
     backend = _AnthropicBackend()
-    backend._client = mock_sdk
+    backend._clients[asyncio.get_running_loop()] = mock_sdk
     result = await backend.chat_completion(
         messages=[
             {"role": "system", "content": "Be helpful"},
@@ -83,7 +85,7 @@ async def test_anthropic_backend_omits_system_when_none():
     mock_sdk.messages.create = AsyncMock(return_value=mock_response)
 
     backend = _AnthropicBackend()
-    backend._client = mock_sdk
+    backend._clients[asyncio.get_running_loop()] = mock_sdk
     await backend.chat_completion(
         messages=[{"role": "user", "content": "hi"}],
         model="claude-haiku-4-5",

@@ -1,5 +1,7 @@
 # sophistry_bench
 
+[![PyPI version](https://img.shields.io/pypi/v/sophistry-bench.svg)](https://pypi.org/project/sophistry-bench/)
+
 ### Overview
 - **Environment ID**: `sophistry_bench`
 - **Description**: Asymmetric-information debate RL environment reproducing [Khan et al. 2024](https://arxiv.org/abs/2402.06782) ("Debating with More Persuasive LLMs Leads to More Truthful Answers"). Two LLMs debate a multi-choice question about a passage; both debaters see the passage, the judge does not. One argues the gold answer; the other a distractor.
@@ -16,6 +18,20 @@
 - **Rubric**: 7-axis sophistry decomposition. Two reward functions exposed via `vf.Rubric`:
   - `aggregate_reward` — weighted mean of 6 sophistry axes (correctness excluded for orthogonality)
   - `correctness_reward` — binary 0/1: did the gold-side debater win?
+
+### Install
+
+```bash
+pip install sophistry-bench
+```
+
+Or, for development:
+
+```bash
+git clone https://github.com/acharyaanusha/sophistry-bench
+cd sophistry-bench
+pip install -e '.[dev]'
+```
 
 ### Quickstart
 

@@ -1,0 +1,21 @@
+[project]
+name = "sophistry-bench-sprint"
+description = "Single-agent advocacy variant of sophistry-bench for the Prime Intellect Reward Hacking Sprint. Pre-registered hypothesis: training Llama-3.2-1B on a programmatic claim-count cliff (peak at n=8) will cause cliff convergence within 100 GRPO steps; three adversarial canary rewards detect format-hacking."
+tags = ["train", "eval", "reward-hacking", "sprint", "alignment", "scalable-oversight", "single-agent", "advocacy", "debate"]
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "verifiers>=0.1.14",
+    "sophistry-bench>=0.1.18",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["sophistry_bench_sprint.py", "pyproject.toml"]
+
+[tool.verifiers.eval]
+num_examples = 5
+rollouts_per_example = 3

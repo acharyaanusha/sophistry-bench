@@ -45,3 +45,7 @@ wandb/
 # DPO pair files (large, gitignored; see artifacts/*.summary.txt for audit trail)
 dpo_pairs*.jsonl
 .prime/
+
+# Sprint training run outputs (large analysis files; summaries land in README/Discord)
+run_*.txt
+v[0-9]*_*.txt

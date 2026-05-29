@@ -382,10 +382,17 @@ def test_load_environment_returns_single_turn_env():
 
 
 def test_load_environment_rubric_has_seven_reward_funcs():
-    """4 trainable/eval + 3 canaries = 7."""
+    """4 trainable/eval + 3 canaries = 7.
+
+    Uses ``env.get_reward_funcs()`` / ``env.get_reward_weights()`` rather than
+    accessing ``env.rubric.reward_funcs`` directly because newer verifiers
+    versions (>=0.1.10) wrap the rubric in a ``RubricGroup`` that exposes a
+    different attribute surface. The accessor methods are stable across
+    versions.
+    """
     env = load_environment(n_items=2)
-    assert len(env.rubric.reward_funcs) == 7
-    assert len(env.rubric.reward_weights) == 7
+    assert len(env.get_reward_funcs()) == 7
+    assert len(env.get_reward_weights()) == 7
 
 
 def test_load_environment_default_weights_train_only_proxy():
@@ -393,12 +400,12 @@ def test_load_environment_default_weights_train_only_proxy():
     and canaries are all weight 0 so they appear in eval logs without
     contributing gradient. Canary weights MUST stay at 0 — they're tripwires."""
     env = load_environment(n_items=2)
-    assert env.rubric.reward_weights == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    assert env.get_reward_weights() == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 
 def test_load_environment_custom_weights_passed_through():
     env = load_environment(n_items=2, weights=[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    assert env.rubric.reward_weights == [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    assert env.get_reward_weights() == [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 
 def test_load_environment_respects_n_items_cap():

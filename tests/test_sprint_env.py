@@ -381,18 +381,41 @@ def test_load_environment_returns_single_turn_env():
     assert len(env.dataset) == 10
 
 
-def test_load_environment_rubric_has_seven_reward_funcs():
-    """4 trainable/eval + 3 canaries = 7.
+def _user_rubric(env):
+    """Return the user-constructed ``Rubric`` (the one passed to ``SingleTurnEnv``).
 
-    Uses ``env.get_reward_funcs()`` / ``env.get_reward_weights()`` rather than
-    accessing ``env.rubric.reward_funcs`` directly because newer verifiers
-    versions (>=0.1.10) wrap the rubric in a ``RubricGroup`` that exposes a
-    different attribute surface. The accessor methods are stable across
-    versions.
+    On verifiers <=0.1.5, ``env.rubric`` IS the user's ``Rubric`` (plain object).
+    On verifiers >=0.1.10, ``env.rubric`` is a ``RubricGroup`` wrapping the
+    user's ``Rubric`` (at ``rubrics[0]``) plus framework-added monitor
+    rubrics. We only want to assert on our own funcs/weights.
     """
+    r = env.rubric
+    if hasattr(r, "rubrics"):
+        return r.rubrics[0]
+    return r
+
+
+def _rubric_funcs(env):
+    """List of reward funcs the user supplied, across verifiers versions."""
+    r = _user_rubric(env)
+    if hasattr(r, "reward_funcs"):
+        return list(r.reward_funcs)
+    return list(r.funcs)
+
+
+def _rubric_weights(env):
+    """List of reward weights the user supplied, across verifiers versions."""
+    r = _user_rubric(env)
+    if hasattr(r, "reward_weights"):
+        return list(r.reward_weights)
+    return list(r.weights)
+
+
+def test_load_environment_rubric_has_seven_reward_funcs():
+    """4 trainable/eval + 3 canaries = 7."""
     env = load_environment(n_items=2)
-    assert len(env.get_reward_funcs()) == 7
-    assert len(env.get_reward_weights()) == 7
+    assert len(_rubric_funcs(env)) == 7
+    assert len(_rubric_weights(env)) == 7
 
 
 def test_load_environment_default_weights_train_only_proxy():
@@ -400,12 +423,12 @@ def test_load_environment_default_weights_train_only_proxy():
     and canaries are all weight 0 so they appear in eval logs without
     contributing gradient. Canary weights MUST stay at 0 — they're tripwires."""
     env = load_environment(n_items=2)
-    assert env.get_reward_weights() == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    assert _rubric_weights(env) == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 
 def test_load_environment_custom_weights_passed_through():
     env = load_environment(n_items=2, weights=[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    assert env.get_reward_weights() == [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    assert _rubric_weights(env) == [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 
 def test_load_environment_respects_n_items_cap():

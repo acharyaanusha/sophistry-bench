@@ -499,4 +499,33 @@ def load_environment(
     return vf.SingleTurnEnv(dataset=dataset, rubric=rubric)
 
 
-__all__ = ["load_environment"]
+# ---------------------------------------------------------------------------
+# Public API aliases (consumed by the OpenEnv server wrapper).
+# The underscore-prefixed names remain as backwards-compatible internals.
+# ---------------------------------------------------------------------------
+parse_claims = _parse_claims
+parse_citations = _parse_citations
+pick_distractor = _pick_distractor
+quality_to_advocacy_dataset = _quality_to_advocacy_dataset
+load_quality_from_json = _load_quality_from_json
+packaged_quality_path = _packaged_quality_path
+
+__all__ = [
+    "load_environment",
+    "QualityItem",
+    # parsing
+    "parse_claims",
+    "parse_citations",
+    # scoring (already public names)
+    "claim_count_cliff",
+    "citation_grounding",
+    "alternation_canary",
+    "starts_with_canary",
+    "length_band_canary",
+    "template_echo_canary",
+    # dataset
+    "pick_distractor",
+    "quality_to_advocacy_dataset",
+    "load_quality_from_json",
+    "packaged_quality_path",
+]

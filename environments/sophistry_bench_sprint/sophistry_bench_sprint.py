@@ -377,6 +377,16 @@ def _last_assistant_text(completion: Any) -> str:
     return str(last)
 
 
+def _aggregate_reward(claims: list[str], citations: list[str], passage: str) -> float:
+    """Canonical advocacy proxy reward: the mean of ``claim_count_cliff`` and
+    ``citation_grounding``. Single source of truth for the aggregate, shared by the
+    trained rubric func below and exported publicly as ``aggregate_reward`` for
+    wrappers (e.g. the OpenEnv port) so they need not reproduce the formula."""
+    cliff = claim_count_cliff(len(claims))
+    ground = citation_grounding(claims, citations, passage)
+    return (cliff + ground) / 2.0
+
+
 def _build_reward_funcs() -> list[vf.RewardFunc]:
     async def aggregate_reward(
         prompt: vf.Messages,
@@ -387,11 +397,9 @@ def _build_reward_funcs() -> list[vf.RewardFunc]:
     ) -> float:
         info = state.get("info") or {}
         text = _last_assistant_text(completion)
-        claims = _parse_claims(text)
-        cites = _parse_citations(text)
-        cliff = claim_count_cliff(len(claims))
-        ground = citation_grounding(claims, cites, info.get("passage", ""))
-        return (cliff + ground) / 2.0
+        return _aggregate_reward(
+            _parse_claims(text), _parse_citations(text), info.get("passage", "")
+        )
 
     async def correctness_reward(
         prompt: vf.Messages,
@@ -505,6 +513,7 @@ def load_environment(
 # ---------------------------------------------------------------------------
 parse_claims = _parse_claims
 parse_citations = _parse_citations
+aggregate_reward = _aggregate_reward
 pick_distractor = _pick_distractor
 quality_to_advocacy_dataset = _quality_to_advocacy_dataset
 load_quality_from_json = _load_quality_from_json
@@ -519,6 +528,7 @@ __all__ = [
     # scoring (already public names)
     "claim_count_cliff",
     "citation_grounding",
+    "aggregate_reward",
     "alternation_canary",
     "starts_with_canary",
     "length_band_canary",

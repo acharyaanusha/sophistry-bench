@@ -1,0 +1,21 @@
+[project]
+name = "sophistry-bench-env"
+description = "Multi-agent debate environment (full sophistry-bench) for Prime Intellect OpenEnv. Two LLM debaters argue opposite sides of QuALITY reading-comprehension questions; a weaker judge picks the winner. Supports inference, DPO preference-pair generation, and on-policy GRPO training via trainee='A'/'B'."
+tags = ["train", "eval", "multi-agent", "scalable-oversight", "debate", "reasoning", "alignment", "grpo", "dpo"]
+version = "0.2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "sophistry-bench>=0.2.0",
+    "verifiers>=0.1.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["sophistry_bench_env.py", "pyproject.toml"]
+
+[tool.verifiers.eval]
+num_examples = 5
+rollouts_per_example = 2

@@ -1,15 +1,18 @@
 """Thin verifiers-spec wrapper around DebateEnv for Prime Intellect Hub publication.
 
-Known limitations (v1)
-----------------------
-- **On-policy GRPO training is not supported.** The verifiers GRPO trainer's
-  `process_chat_format_vllm` assumes ``state["responses"]`` contains one
-  ``ChatCompletion`` per assistant turn in the completion. Our ``rollout()``
-  override produces multi-agent debate turns from internal ``DebateEnv`` calls
-  and does not populate ``responses``. Supported v1 use cases: inference,
-  eval/leaderboard, DPO preference-pair generation. To add GRPO support, the
-  rollout would need to thread per-turn ``ChatCompletion`` objects (with token
-  logprobs) into ``state["responses"]``.
+Supported use cases
+--------------------
+- **Inference / eval / leaderboard**: both debaters use configured ``LLMClient``
+  instances; ``trainee=None`` (default).
+- **DPO preference-pair generation**: same as above; trajectories are logged and
+  post-processed offline.
+- **On-policy GRPO training**: set ``trainee="A"`` or ``"B"`` in
+  ``load_environment()``.  ``rollout()`` uses the framework's vLLM client for
+  the nominated trainee debater and threads ``ChatCompletion`` objects (with
+  per-token logprobs) into ``state["trajectory"]`` via
+  ``MultiTurnEnv.add_model_response()`` so the GRPO trainer can compute policy
+  gradients.  The opponent continues to use its own ``LLMClient``; the judge
+  always uses its own ``LLMClient``.
 
 Design choice — base class: ``MultiTurnEnv``
 =============================================
@@ -59,8 +62,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import verifiers as vf
 from datasets import Dataset
@@ -79,6 +83,38 @@ from sophistry_bench.environment import DebateEnv, Trajectory
 from sophistry_bench.rubric import JudgePool, SophistryRubric
 
 logger = logging.getLogger(__name__)
+
+
+class _FrameworkClientAdapter:
+    """Wraps the framework's vLLM client (AsyncOpenAI-compatible) for trainee turns.
+
+    Satisfies the ``_ChatBackend`` protocol so it can be passed as
+    ``_override_client`` to ``LLMClient``.  Merges ``sampling_args`` from the
+    framework (logprobs, token budgets) over the debate-env call kwargs so the
+    vLLM server returns the logprob payload needed by the GRPO trainer.
+
+    Captures each ``(prompt_messages, ChatCompletion)`` pair in order so
+    callers can thread raw responses into ``state["trajectory"]`` via
+    ``MultiTurnEnv.add_model_response()``.
+    """
+
+    def __init__(
+        self, openai_client: Any, trainee_model: str, sampling_args: dict | None = None
+    ) -> None:
+        self._client = openai_client
+        self._model = trainee_model
+        self._sampling_args: dict = sampling_args or {}
+        # Each element is (prompt_messages, ChatCompletion) in call order.
+        self.captured: list[tuple[list[dict], Any]] = []
+
+    async def chat_completion(self, *, messages: list[dict], model: str, **kwargs) -> str:
+        # Framework sampling_args override debate-env kwargs (e.g. logprobs=True).
+        merged = {**kwargs, **self._sampling_args}
+        resp = await self._client.chat.completions.create(
+            model=self._model, messages=messages, **merged
+        )
+        self.captured.append((messages, resp))
+        return resp.choices[0].message.content or ""
 
 
 def _default_cache_path() -> Path:
@@ -134,7 +170,7 @@ def _quality_to_hf_dataset(items, *, seed: int = 0) -> Dataset:
 # ---------------------------------------------------------------------------
 
 
-def _build_reward_funcs(rubric: SophistryRubric) -> list[vf.RewardFunc]:
+def _build_reward_funcs() -> list[vf.RewardFunc]:
     """Return two reward functions backed by ``SophistryRubric``.
 
     * ``aggregate_reward`` — weighted average across all sophistry axes.
@@ -194,20 +230,25 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
         debate_env: DebateEnv,
         rubric_obj: SophistryRubric,
         dataset: Dataset,
+        eval_dataset: Dataset | None = None,
+        debater_a_spec: str | None = None,
+        debater_b_spec: str | None = None,
+        trainee: Literal["A", "B"] | None = None,
         weights: list[float] | None = None,
         **kwargs: Any,
     ) -> None:
-        reward_funcs = _build_reward_funcs(rubric_obj)
+        reward_funcs = _build_reward_funcs()
         rubric = vf.Rubric(funcs=reward_funcs, weights=weights or [1.0, 0.5])
-        super().__init__(
-            dataset=dataset,
-            rubric=rubric,
-            # message_type="chat" is the default; the prompt column is a list of
-            # ChatMessage dicts so format_dataset will work correctly.
-            **kwargs,
-        )
+        kwargs.pop("rubric", None)  # built locally; caller must use rubric_obj
+        init_kwargs: dict[str, Any] = dict(dataset=dataset, rubric=rubric, **kwargs)
+        if eval_dataset is not None:
+            init_kwargs["eval_dataset"] = eval_dataset
+        super().__init__(**init_kwargs)
         self._debate_env = debate_env
         self._rubric_obj = rubric_obj
+        self._debater_a_spec = debater_a_spec
+        self._debater_b_spec = debater_b_spec
+        self._trainee: Literal["A", "B"] | None = trainee
 
     # ------------------------------------------------------------------
     # Required abstract method (never called — our rollout() is self-contained)
@@ -237,23 +278,73 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
     ) -> Any:
         """Run a full debate rollout and return a verifiers ``State`` dict.
 
-        Compatible with both:
+        Compatible with both calling conventions:
         - verifiers >=0.1.10: ``rollout(input, client, model, sampling_args)``
           where ``input`` is a ``RolloutInput`` TypedDict with ``prompt``,
           ``answer``, ``task``, ``info``, ``example_id``.
         - verifiers <=0.1.5: ``rollout(client, model, prompt, answer, task,
           info, sampling_args)``.
 
-        The framework's ``client``/``model`` are accepted but unused —
-        ``DebateEnv`` manages its own provider clients. ``info`` carries the
-        full serialised ``DebateTask`` written by ``_quality_to_hf_dataset``.
+        **Eval / inference mode** (``trainee=None``):
+        The framework's ``client``/``model`` are accepted but unused — ``DebateEnv``
+        manages its own provider clients.  A warning is logged so the mismatch
+        is visible.
+
+        **GRPO training mode** (``trainee="A"`` or ``"B"``):
+        The framework's ``client`` (vLLM) is used for the nominated trainee
+        debater; the opponent continues using the configured ``LLMClient``.
+        Raw ``ChatCompletion`` objects (with token logprobs when the vLLM
+        server is started with ``--enable-log-probs``) are threaded into
+        ``state["trajectory"]`` via ``MultiTurnEnv.add_model_response()`` so
+        the GRPO trainer can extract per-token logprobs directly.
         """
-        # Detect calling convention. The framework can pass the
-        # RolloutInput as either the first positional arg
-        # (``rollout(input, client, model, sampling_args)``) or as the
-        # ``input=`` keyword (``rollout(input=..., client=..., ...)``).
-        # Some verifiers integrations use the keyword form, so we accept
-        # both before falling back to legacy positional parsing.
+        # ------------------------------------------------------------------ #
+        # Detect calling convention and extract framework artefacts.          #
+        # ------------------------------------------------------------------ #
+        _is_new_api = bool(args and isinstance(args[0], dict) and "prompt" in args[0])
+        _is_new_api = _is_new_api or bool(
+            isinstance(kwargs.get("input"), dict) and "prompt" in kwargs.get("input", {})
+        )
+        if _is_new_api:
+            # new-API: rollout(input_dict, client, model, sampling_args)
+            _framework_model: str | None = kwargs.get("model") or (
+                args[2] if len(args) > 2 and isinstance(args[2], str) else None
+            )
+            _framework_client: Any = kwargs.get("client") or (
+                args[1] if len(args) > 1 else None
+            )
+            _sampling_args: dict = dict(
+                kwargs.get("sampling_args")
+                or (args[3] if len(args) > 3 and isinstance(args[3], dict) else {})
+            )
+        else:
+            # legacy-API: rollout(client, model, prompt, answer, task, info, sampling_args)
+            _framework_model = kwargs.get("model") or (
+                args[1] if len(args) > 1 and isinstance(args[1], str) else None
+            )
+            _framework_client = kwargs.get("client") or (args[0] if args else None)
+            _sampling_args = dict(
+                kwargs.get("sampling_args")
+                or (args[6] if len(args) > 6 and isinstance(args[6], dict) else {})
+            )
+
+        # Warn only when the framework model will be fully ignored (no trainee).
+        if _framework_model is not None and self._trainee is None:
+            a = self._debater_a_spec or self._debate_env.a_model
+            b = self._debater_b_spec or self._debate_env.b_model
+            logger.warning(
+                "SophistryDebateEnv.rollout() received framework model=%r but is "
+                "using its own debater models (A: %s, B: %s). The framework model "
+                "is unused. To use it for GRPO training set trainee='A' or 'B' in "
+                "load_environment(); for eval configure debaters via debater_a=/debater_b=.",
+                _framework_model,
+                a,
+                b,
+            )
+
+        # ------------------------------------------------------------------ #
+        # Parse input: detect RolloutInput dict vs. legacy positional args.   #
+        # ------------------------------------------------------------------ #
         input_obj: dict | None = None
         if args and isinstance(args[0], dict) and "prompt" in args[0]:
             input_obj = args[0]
@@ -276,28 +367,59 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
             info = (args[5] if len(args) > 5 else kwargs.get("info")) or {}
             example_id = 0
 
-        # Reconstruct the DebateTask from the info column.
         if isinstance(info, str):
             info = json.loads(info)
 
         debate_task = DebateTask(**info)
 
-        # Run the internal multi-agent debate.
-        traj: Trajectory = await self._debate_env.rollout(debate_task)
+        # ------------------------------------------------------------------ #
+        # Run the debate.  In GRPO mode use the framework's vLLM client for   #
+        # trainee turns; otherwise use the configured LLMClients.             #
+        # ------------------------------------------------------------------ #
+        trainee_adapter: _FrameworkClientAdapter | None = None
+        if (
+            self._trainee is not None
+            and _framework_client is not None
+            and _framework_model is not None
+        ):
+            trainee_adapter = _FrameworkClientAdapter(
+                _framework_client, _framework_model, _sampling_args
+            )
+            trainee_llm = LLMClient(provider="openai", _override_client=trainee_adapter)
+            if self._trainee == "A":
+                active_env = DebateEnv(
+                    debater_a_client=trainee_llm,
+                    debater_a_model=_framework_model,
+                    debater_b_client=self._debate_env.b_client,
+                    debater_b_model=self._debate_env.b_model,
+                    judge_client=self._debate_env.judge_client,
+                    judge_model=self._debate_env.judge_model,
+                    turns_per_debater=self._debate_env.turns_per_debater,
+                )
+            else:
+                active_env = DebateEnv(
+                    debater_a_client=self._debate_env.a_client,
+                    debater_a_model=self._debate_env.a_model,
+                    debater_b_client=trainee_llm,
+                    debater_b_model=_framework_model,
+                    judge_client=self._debate_env.judge_client,
+                    judge_model=self._debate_env.judge_model,
+                    turns_per_debater=self._debate_env.turns_per_debater,
+                )
+        else:
+            active_env = self._debate_env
 
-        # Score immediately so we don't have to put the non-serialisable
-        # Trajectory dataclass into state (verifiers >=0.1.10 ships state
-        # across a ZMQ worker boundary).
+        traj: Trajectory = await active_env.rollout(debate_task)
+
+        # Score immediately — avoid putting the non-serialisable Trajectory
+        # dataclass into state (verifiers >=0.1.10 ships state over ZMQ).
         scores = await self._rubric_obj.score(traj)
 
         # Format debate turns as ChatMessage dicts for the completion field.
         completion_messages: list[dict] = []
         for turn in traj.turns:
             completion_messages.append(
-                {
-                    "role": "assistant",
-                    "content": f"[Debater {turn.debater}] {turn.text}",
-                }
+                {"role": "assistant", "content": f"[Debater {turn.debater}] {turn.text}"}
             )
         if traj.ruling is not None:
             completion_messages.append(
@@ -307,12 +429,8 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
                 }
             )
 
-        # Build the state dict. Reward functions read state["_rubric_scores"].
-        # All values must be JSON-serialisable for the ZMQ worker boundary
-        # in verifiers >=0.1.10. The framework expects state["trajectory"] to
-        # be a list of turn dicts (its own format) — we don't use the
-        # framework's turn loop so it stays empty; our own multi-agent
-        # trajectory is consumed inside rollout() and never stored.
+        # trajectory_id is required by add_model_response() when threading
+        # trainee ChatCompletion objects into state["trajectory"] for GRPO.
         state: vf.State = {
             "id": example_id,
             "prompt": prompt,
@@ -322,6 +440,7 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
             "info": info,
             "responses": [],
             "trajectory": [],
+            "trajectory_id": str(uuid.uuid4()),
             "turn": len(traj.turns),
             "_rubric_scores": {k: float(v) for k, v in scores.items()},
             "timing": {
@@ -330,6 +449,12 @@ class SophistryDebateEnv(vf.MultiTurnEnv):
                 "total_ms": 0.0,
             },
         }
+
+        # GRPO: thread each trainee ChatCompletion into state["trajectory"] so
+        # the training harness can extract per-token logprobs.
+        if trainee_adapter is not None:
+            for prompt_msgs, response in trainee_adapter.captured:
+                await self.add_model_response(state, prompt_msgs, response)
 
         return state
 
@@ -344,10 +469,14 @@ def load_environment(
     quality_json: str | None = None,
     n_items: int = 400,
     debater: str = "anthropic:claude-sonnet-4-6",
+    debater_a: str | None = None,
+    debater_b: str | None = None,
     judge: str = "anthropic:claude-haiku-4-5",
     judge_pool_size: int = 3,
     turns_per_debater: int = 3,
     seed: int = 0,
+    eval_fraction: float = 0.1,
+    trainee: Literal["A", "B"] | None = None,
     reward_weights: list[float] | None = None,
     **_: Any,
 ) -> vf.Environment:
@@ -365,14 +494,34 @@ def load_environment(
         n_items: Cap on QuALITY items when auto-fetching. Defaults to 400 to
             match Khan et al. T_L sample size; ignored when ``quality_json``
             is provided.
-        debater: Provider:model string for both debaters.  Defaults to
-            ``anthropic:claude-sonnet-4-6``.
+        debater: Fallback provider:model string used for whichever of
+            ``debater_a`` / ``debater_b`` are not explicitly set.  Defaults to
+            ``anthropic:claude-sonnet-4-6``.  When both ``debater_a`` and
+            ``debater_b`` are provided this parameter is ignored.
+        debater_a: Provider:model string for debater A (argues the gold answer
+            in round 1, distractor in round 2).  Falls back to ``debater`` when
+            omitted, preserving backwards-compatible self-play behaviour.
+        debater_b: Provider:model string for debater B (argues the distractor
+            in round 1, gold answer in round 2).  Falls back to ``debater``
+            when omitted.
         judge: Provider:model string for the judge.  Defaults to
             ``anthropic:claude-haiku-4-5`` (weaker than debater per Khan et al.).
         judge_pool_size: Number of judges in the ``JudgePool``.  More judges
             reduce variance but increase cost.
         turns_per_debater: Number of argument rounds each debater gets.
         seed: Random seed for deterministic distractor selection.
+        eval_fraction: Fraction of loaded items held out as an eval split.
+            Defaults to ``0.1`` (10%).  The held-out rows are drawn from the
+            end of the shuffled item list so the split is deterministic given
+            the same ``seed``.  Set to ``0.0`` to disable (eval falls back to
+            train, matching the previous behaviour).
+        trainee: Which debater role (``"A"`` or ``"B"``) is the model under
+            training.  When set, ``rollout()`` uses the framework's vLLM client
+            for that debater and threads the resulting ``ChatCompletion``
+            objects (with per-token logprobs) into ``state["trajectory"]`` for
+            the GRPO trainer.  The opponent debater continues using the
+            configured ``LLMClient``.  Leave as ``None`` (default) for eval /
+            inference / DPO.
         reward_weights: Two-element list ``[aggregate_weight, correctness_weight]``
             passed to ``vf.Rubric``. Defaults to ``[1.0, 0.5]``. With
             ``aggregate`` now excluding ``correctness`` (see
@@ -435,22 +584,36 @@ def load_environment(
                 len(items),
                 n_items,
             )
-    dataset = _quality_to_hf_dataset(items, seed=seed)
+    if not 0.0 <= eval_fraction <= 1.0:
+        raise ValueError(
+            f"eval_fraction must be in [0.0, 1.0], got {eval_fraction!r}"
+        )
+    # Split into train / eval before building HF datasets. Drawn from the tail
+    # so the split is deterministic given the same seed and item order.
+    # Cap n_eval at len(items)-1 so train set always has at least one item.
+    n_eval = min(int(len(items) * eval_fraction), max(len(items) - 1, 0)) if eval_fraction > 0.0 else 0
+    train_items = items[: len(items) - n_eval] if n_eval else items
+    eval_items = items[len(items) - n_eval :] if n_eval else []
+
+    dataset = _quality_to_hf_dataset(train_items, seed=seed)
+    eval_dataset = _quality_to_hf_dataset(eval_items, seed=seed) if eval_items else None
+
     # Default weights: aggregate (composite reward signal) gets 2x correctness
     # (binary indicator of gold-side win). Tweak per training experiment.
     weights = reward_weights if reward_weights is not None else [1.0, 0.5]
 
-    d_provider, d_model = debater.split(":", 1)
+    a_spec = debater_a or debater
+    b_spec = debater_b or debater
+    a_provider, a_model = a_spec.split(":", 1)
+    b_provider, b_model = b_spec.split(":", 1)
     j_provider, j_model = judge.split(":", 1)
-    d_provider_t = cast(Provider, d_provider)
-    j_provider_t = cast(Provider, j_provider)
 
     debate_env = DebateEnv(
-        debater_a_client=LLMClient(provider=d_provider_t),
-        debater_a_model=d_model,
-        debater_b_client=LLMClient(provider=d_provider_t),
-        debater_b_model=d_model,
-        judge_client=LLMClient(provider=j_provider_t),
+        debater_a_client=LLMClient(provider=cast(Provider, a_provider)),
+        debater_a_model=a_model,
+        debater_b_client=LLMClient(provider=cast(Provider, b_provider)),
+        debater_b_model=b_model,
+        judge_client=LLMClient(provider=cast(Provider, j_provider)),
         judge_model=j_model,
         turns_per_debater=turns_per_debater,
     )
@@ -462,5 +625,9 @@ def load_environment(
         debate_env=debate_env,
         rubric_obj=rubric_obj,
         dataset=dataset,
+        eval_dataset=eval_dataset,
+        debater_a_spec=a_spec,
+        debater_b_spec=b_spec,
+        trainee=trainee,
         weights=weights,
     )

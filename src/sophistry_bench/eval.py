@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import statistics
 import warnings
@@ -66,8 +67,23 @@ async def run_leaderboard(
     judge_pool_overrides: list[object] | None = None,
     judge_pool_size: int = _DEFAULT_POOL_SIZE,
     pool_specs: list[tuple[str, str]] | None = None,
+    matchups: list[tuple[tuple[str, str], tuple[str, str]]] | None = None,
 ) -> dict:
-    """Run a debate-bench across debater_specs.
+    """Run a debate-bench across debater_specs and/or explicit matchups.
+
+    Self-play leaderboard (existing behaviour): each entry in ``debater_specs``
+    runs as both debater A and B.  Output key: ``"provider:model"``.
+
+    Heterogeneous matchups: each entry in ``matchups`` is
+    ``((a_provider, a_model), (b_provider, b_model))``.  Output key:
+    ``"a_provider:a_model vs b_provider:b_model"``.  ``debater_overrides``
+    applies to individual model keys within a matchup in the same way.
+
+    .. note::
+        Key formats differ between the two loops: ``debater_specs`` produces
+        ``"p:m"`` while ``matchups`` produces ``"p:m vs p:m"``.  Do not mix the
+        two loops across a pre/post comparison with ``compare_leaderboards`` —
+        use the same loop on both sides to ensure shared keys exist.
 
     The rubric judge pool is, in order of precedence:
     1. `pool_specs` if provided — heterogeneous pool of (provider, model) entries
@@ -75,25 +91,34 @@ async def run_leaderboard(
     """
     debater_overrides = debater_overrides or {}
     resolved_pool_specs = pool_specs or [judge_spec] * judge_pool_size
+    if not resolved_pool_specs and judge_pool_overrides is None:
+        raise ValueError(
+            "judge_pool_size must be >= 1 when pool_specs is not provided "
+            f"(got judge_pool_size={judge_pool_size})"
+        )
     out: dict = {}
-    for provider, model in debater_specs:
-        key = f"{provider}:{model}"
-        d_override = debater_overrides.get(key)
-        a = LLMClient(provider=provider, _override_client=d_override)  # type: ignore[arg-type]
-        b = LLMClient(provider=provider, _override_client=d_override)  # type: ignore[arg-type]
-        j = LLMClient(provider=judge_spec[0], _override_client=judge_override)  # type: ignore[arg-type]
-        env = DebateEnv(
-            debater_a_client=a,
-            debater_a_model=model,
-            debater_b_client=b,
-            debater_b_model=model,
-            judge_client=j,
+
+    def _build_env(a_provider: str, a_model: str, b_provider: str, b_model: str) -> DebateEnv:
+        a_override = debater_overrides.get(f"{a_provider}:{a_model}")
+        b_override = debater_overrides.get(f"{b_provider}:{b_model}")
+        # In self-play the two lookups return the same object; deep-copy so
+        # stateful test clients (response queues, call counters) are not shared.
+        if b_override is a_override and b_override is not None:
+            b_override = copy.deepcopy(b_override)
+        return DebateEnv(
+            debater_a_client=LLMClient(provider=a_provider, _override_client=a_override),  # type: ignore[arg-type]
+            debater_a_model=a_model,
+            debater_b_client=LLMClient(provider=b_provider, _override_client=b_override),  # type: ignore[arg-type]
+            debater_b_model=b_model,
+            judge_client=LLMClient(provider=judge_spec[0], _override_client=judge_override),  # type: ignore[arg-type]
             judge_model=judge_spec[1],
             turns_per_debater=turns_per_debater,
         )
+
+    def _build_pool() -> JudgePool:
         if judge_pool_overrides is not None:
             pool_clients = list(judge_pool_overrides)
-            pool_entries = [
+            entries = [
                 (
                     resolved_pool_specs[i % len(resolved_pool_specs)][0],
                     resolved_pool_specs[i % len(resolved_pool_specs)][1],
@@ -102,14 +127,26 @@ async def run_leaderboard(
                 for i, client in enumerate(pool_clients)
             ]
         else:
-            pool_entries = [(p, m, None) for p, m in resolved_pool_specs]
-        pool = JudgePool(pool_entries)
-        rubric = SophistryRubric(judge_pool=pool)
-        result = await evaluate_model(env=env, rubric=rubric, tasks=tasks)
-        out[key] = {
-            "n": result.n,
-            "mean_subscores": result.mean_subscores,
-        }
+            entries = [(p, m, None) for p, m in resolved_pool_specs]
+        return JudgePool(entries)
+
+    for provider, model in debater_specs:
+        key = f"{provider}:{model}"
+        env = _build_env(provider, model, provider, model)
+        result = await evaluate_model(env=env, rubric=SophistryRubric(judge_pool=_build_pool()), tasks=tasks)
+        out[key] = {"n": result.n, "mean_subscores": result.mean_subscores}
+
+    for (a_provider, a_model), (b_provider, b_model) in (matchups or []):
+        key = f"{a_provider}:{a_model} vs {b_provider}:{b_model}"
+        if key in out:
+            warnings.warn(
+                f"run_leaderboard: duplicate matchup key {key!r}; earlier result will be overwritten.",
+                stacklevel=2,
+            )
+        env = _build_env(a_provider, a_model, b_provider, b_model)
+        result = await evaluate_model(env=env, rubric=SophistryRubric(judge_pool=_build_pool()), tasks=tasks)
+        out[key] = {"n": result.n, "mean_subscores": result.mean_subscores}
+
     Path(output_path).write_text(json.dumps(out, indent=2))
     return out
 

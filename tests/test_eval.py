@@ -101,6 +101,33 @@ async def test_run_leaderboard_writes_json(tmp_path):
     assert "mean_subscores" in data["openai:gpt-4o-mini"]
 
 
+@pytest.mark.asyncio
+async def test_run_leaderboard_matchups_produce_vs_key(tmp_path):
+    """matchups produce keys of the form 'a_provider:a_model vs b_provider:b_model'."""
+    from sophistry_bench.eval import run_leaderboard
+
+    out = tmp_path / "lb.json"
+    debater_overrides = {
+        "openai:gpt-4o": _AlwaysReturns("<claim>x</claim>"),
+        "openai:gpt-4o-mini": _AlwaysReturns("<claim>y</claim>"),
+    }
+
+    await run_leaderboard(
+        debater_specs=[],
+        matchups=[(("openai", "gpt-4o"), ("openai", "gpt-4o-mini"))],
+        judge_spec=("openai", "gpt-4o-mini"),
+        tasks=_tasks(n=1),
+        output_path=out,
+        turns_per_debater=1,
+        debater_overrides=debater_overrides,
+        judge_override=_AlwaysReturns("A"),
+        judge_pool_overrides=[_AlwaysReturns("0.5")],
+    )
+    data = json.loads(out.read_text())
+    assert "openai:gpt-4o vs openai:gpt-4o-mini" in data
+    assert "mean_subscores" in data["openai:gpt-4o vs openai:gpt-4o-mini"]
+
+
 def test_compare_leaderboards_pre_post_finetune_does_not_warn():
     """The intended use case (one base model vs one fine-tuned model) must not warn."""
     before = {"openai:gpt-4o-mini": {"n": 10, "mean_subscores": {"aggregate": 0.5, "correctness": 0.6, "citation_bluffing": 0.7}}}
